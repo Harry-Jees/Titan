@@ -43,7 +43,7 @@ Optional secrets/vars:
 - TITAN_DAILY_REQUEST_LIMIT (default 200 per user per UTC day)
 - TITAN_TRAINING_CRON_SECRET (optional HTTP trigger secret for the training worker)
 
-Keep secrets out of source control. The public preview uses `@cf/zai-org/glm-4.7-flash` through Cloudflare Workers AI free allocation. It has no paid model API configured; requests can fail when free daily quotas are exhausted.
+Keep secrets out of source control. Titan must not use Cloudflare Workers AI or any hosted inference API. The Workers AI binding and automatic fallback have been removed. Chat remains unavailable until Titan's own local model runtime is ready; this prevents surprise cloud-credit usage.
 
 ## API
 - GET /health
