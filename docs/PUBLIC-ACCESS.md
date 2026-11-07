@@ -37,4 +37,4 @@ The session tables are created additively with `CREATE TABLE IF NOT EXISTS` when
 
 ## Frontend integration
 
-The public web client must bootstrap a session before its first chat request, retain the returned token in browser-local storage, and retry bootstrap only when the API returns 401. Do not ship a shared bearer token in frontend source code. The Worker alone does not create a website UI; the public frontend must be pointed at this API after deployment and verification.
+The Worker now serves a self-contained responsive chat interface at `/`; opening the Worker root automatically bootstraps a session and sends chat requests to the same origin. The UI keeps the capability in browser-local storage, never puts it in a URL, and uses text-only rendering for model output. Do not ship a shared bearer token in frontend source code. The interface and API still need a staged deployment and live end-to-end check before sharing the public URL.
