@@ -66,7 +66,6 @@ export async function issuePublicSession(request: Request, env: Env): Promise<
 export async function consumePublicIpQuota(request: Request, env: Env): Promise<boolean> {
   const ip = request.headers.get("cf-connecting-ip") || "";
   if (!ip) return false;
-  await ensurePublicTables(env);
   const ipHash = await sha256("titan-public-ip:" + ip);
   const day = new Date().toISOString().slice(0, 10);
   const row = await env.DB.prepare(
@@ -86,7 +85,6 @@ export async function memoryScope(request: Request, env: Env): Promise<string | 
   // Anonymous public sessions are random, revocable, time-limited capabilities.
   if (token.startsWith("pub_")) {
     try {
-      await ensurePublicTables(env);
       const tokenHash = await sha256("titan-public-session:" + token);
       const row = await env.DB.prepare("SELECT user_id FROM public_sessions WHERE token_hash=? AND expires_at>CURRENT_TIMESTAMP")
         .bind(tokenHash).first<{ user_id: string }>();
