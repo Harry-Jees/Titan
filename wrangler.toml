@@ -1,4 +1,6 @@
 name = "titan-ai-core"
+workers_dev = true
+preview_urls = false
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
 
