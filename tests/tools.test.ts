@@ -32,11 +32,12 @@ describe("registered API tool safety", () => {
   it("uses an atomic per-user daily quota statement", async () => {
     const first = vi.fn(async () => ({ requests: 1 }));
     const bind = vi.fn(() => ({ first }));
-    const prepare = vi.fn(() => ({ bind }));
+    const prepare = vi.fn((_sql: string) => ({ bind }));
     const env: any = { DB: { prepare } };
     expect(await consumeDailyQuota(env, "user-scope")).toBe(true);
-    expect(prepare.mock.calls[0][0]).toContain("ON CONFLICT(user_id,day)");
-    expect(prepare.mock.calls[0][0]).toContain("RETURNING requests");
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("ON CONFLICT(user_id,day)"));
+    expect(prepare).toHaveBeenCalledWith(expect.stringContaining("RETURNING requests"));
     expect(bind).toHaveBeenCalledWith("user-scope", expect.any(String), 200);
   });
 });
