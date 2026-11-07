@@ -60,7 +60,8 @@ describe("security helpers", () => {
         };
       }
     };
-    const env: any = { DB: db, TITAN_AUTH_MAP_B64: btoa(JSON.stringify({ existing: "legacy_user" })) };
+    const legacyToken = "titan-token-abcdefghijklmnop";
+    const env: any = { DB: db, TITAN_AUTH_MAP_B64: btoa(JSON.stringify({ [legacyToken]: "legacy_user" })) };
     const issued = await issuePublicSession(new Request("https://titan.test/public/session", {
       method: "POST", headers: { "cf-connecting-ip": "203.0.113.10" }
     }), env);
@@ -73,7 +74,7 @@ describe("security helpers", () => {
     }), env);
     expect(scope).toBe("public_isolated_1");
     expect(await memoryScope(new Request("https://titan.test/chat", {
-      headers: { authorization: "Bearer existing" }
+      headers: { authorization: "Bearer " + legacyToken }
     }), env)).toBe("legacy_user");
     expect(await consumePublicIpQuota(new Request("https://titan.test/chat", {
       headers: { "cf-connecting-ip": "203.0.113.10" }
