@@ -12,7 +12,7 @@
 - Robots-aware crawler with same-host sitemap traversal, per-host pacing, bounded downloads and resumable state.
 - Source-attributed chunking, topic coverage planning and candidate LoRA training/evaluation scripts.
 - Daily research workflow at 06:30 UTC (12:00 PM IST): crawl, plan, chunk and upload artifacts. It does not call a teacher model or fine-tune.
-- Separate curation worker at 03:30 UTC (09:00 AM IST): only processes conversations from users who explicitly opt in, screens sensitive content, grades at most eight pairs and stores candidates. It never updates model weights.
+- Separate curation worker at 03:30 UTC (09:00 AM IST): only processes conversations from users who explicitly opt in, screens sensitive content, grades at most eight pairs and stores candidates. Users can inspect, approve, reject, export only approved rows, or delete their own examples. The worker never updates model weights.
 - Bounded self-build workflow is manual and PR-only; no auto-merge or deployment.
 - CI covers Python regression tests, TypeScript strict checking and Vitest.
 
