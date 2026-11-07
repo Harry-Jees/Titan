@@ -18,8 +18,8 @@
 
 ## Verification
 - Original portable starter Python suite passed locally (27 tests).
-- Latest GitHub Actions run #99 (run ID 42368894732) passed on commit dbdbeb5dcc0de7b2facabe46ce4d677e39f4665a: Python pytest, TypeScript typecheck and Vitest all succeeded.
-- The development branch was 100 commits ahead of main before this follow-up commit; draft PR #1 is open and unmerged.
+- Latest GitHub Actions run #106 (run ID 42375154081) passed on commit 0eba943ba6ae285222a35c14f9216f4d7ad72413: Python pytest, TypeScript typecheck and Vitest all succeeded.
+- The development branch is 104 commits ahead of main; draft PR #1 is open and unmerged.
 - Read-only Cloudflare inspection found the live D1 schema already contains the current tool and training tables, but its migration ledger differs from this repository's sequence. No migration was applied; staging compatibility still needs a deliberate check.
 - No GPU training or teacher API call was run.
 
