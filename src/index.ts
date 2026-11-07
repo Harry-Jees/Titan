@@ -60,6 +60,29 @@ export default {
         return json({ error: "Method not allowed" }, 405);
       }
 
+      if (request.method === "GET" && url.pathname === "/training/examples/export") {
+        const scope = await memoryScope(request, env);
+        if (!scope) return json({ error: "Unauthorized" }, 401);
+        const rows = await env.DB.prepare("SELECT prompt,response,quality_score,labels_json FROM training_examples WHERE user_id=? AND status='approved' ORDER BY reviewed_at ASC LIMIT 1000")
+          .bind(scope).all<{prompt:string;response:string;quality_score:number;labels_json:string}>();
+        const output = (rows.results || []).map(row => JSON.stringify({
+          instruction: row.prompt,
+          response: row.response,
+          category: "user_approved_conversation",
+          source_type: "user_conversation",
+          consent: true,
+          quality_score: row.quality_score,
+          labels: JSON.parse(row.labels_json || "[]")
+        })).join("\\n");
+        return new Response(output ? output + "\\n" : "", { status: 200, headers: {
+          "content-type": "application/x-ndjson; charset=utf-8",
+          "cache-control": "no-store",
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
+          "access-control-allow-headers": "Authorization, Content-Type, X-Titan-Cron"
+        }});
+      }
+
       if (url.pathname === "/training/examples") {
         const scope = await memoryScope(request, env);
         if (!scope) return json({ error: "Unauthorized" }, 401);
