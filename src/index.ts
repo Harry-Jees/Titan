@@ -60,6 +60,37 @@ export default {
         return json({ error: "Method not allowed" }, 405);
       }
 
+      if (url.pathname === "/training/examples") {
+        const scope = await memoryScope(request, env);
+        if (!scope) return json({ error: "Unauthorized" }, 401);
+        if (request.method === "GET") {
+          const rows = await env.DB.prepare("SELECT id,prompt,response,quality_score,labels_json,status,created_at,reviewed_at FROM training_examples WHERE user_id=? ORDER BY created_at DESC LIMIT 100")
+            .bind(scope).all();
+          return json({ examples: rows.results || [] });
+        }
+        if (request.method === "DELETE") {
+          const id = url.searchParams.get("id") || "";
+          if (id) {
+            const result = await env.DB.prepare("DELETE FROM training_examples WHERE user_id=? AND id=?").bind(scope, id).run();
+            return json({ deleted: result.meta.changes || 0 });
+          }
+          const result = await env.DB.prepare("DELETE FROM training_examples WHERE user_id=?").bind(scope).run();
+          return json({ deleted: result.meta.changes || 0 });
+        }
+        return json({ error: "Method not allowed" }, 405);
+      }
+      if (request.method === "POST" && url.pathname === "/training/examples/review") {
+        const scope = await memoryScope(request, env);
+        if (!scope) return json({ error: "Unauthorized" }, 401);
+        const body = await readJson(request) as { id?: string; status?: string };
+        if (typeof body.id !== "string" || !/^[A-Za-z0-9_-]{8,80}$/.test(body.id) ||
+            !["approved", "rejected"].includes(String(body.status)))
+          return json({ error: "A valid example id and approved/rejected status are required" }, 400);
+        const result = await env.DB.prepare("UPDATE training_examples SET status=?,reviewed_at=CURRENT_TIMESTAMP WHERE user_id=? AND id=?")
+          .bind(body.status, scope, body.id).run();
+        return json({ updated: result.meta.changes || 0 });
+      }
+
       if (request.method === "POST" && url.pathname === "/chat") {
         const scope = await memoryScope(request, env);
         if (!scope) return json({ error: "Unauthorized" }, 401);
