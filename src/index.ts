@@ -43,6 +43,23 @@ export default {
         return json({ error: "Method not allowed" }, 405);
       }
 
+      if (url.pathname === "/training/preferences") {
+        const scope = await memoryScope(request, env);
+        if (!scope) return json({ error: "Unauthorized" }, 401);
+        if (request.method === "GET") {
+          const row = await env.DB.prepare("SELECT enabled,updated_at FROM training_preferences WHERE user_id=?").bind(scope).first<{enabled:number;updated_at:string}>();
+          return json({ enabled: row?.enabled === 1, updatedAt: row?.updated_at || null });
+        }
+        if (request.method === "POST") {
+          const body = await readJson(request) as { enabled?: boolean };
+          if (typeof body.enabled !== "boolean") return json({ error: "enabled must be a boolean" }, 400);
+          await env.DB.prepare("INSERT INTO training_preferences(user_id,enabled,updated_at) VALUES(?,?,CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET enabled=excluded.enabled,updated_at=CURRENT_TIMESTAMP")
+            .bind(scope, body.enabled ? 1 : 0).run();
+          return json({ enabled: body.enabled });
+        }
+        return json({ error: "Method not allowed" }, 405);
+      }
+
       if (request.method === "POST" && url.pathname === "/chat") {
         const scope = await memoryScope(request, env);
         if (!scope) return json({ error: "Unauthorized" }, 401);
