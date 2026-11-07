@@ -72,6 +72,7 @@ def allowed(url:str)->bool:
         parser=urllib.robotparser.RobotFileParser(); robots_url=origin+"/robots.txt"; parser.set_url(robots_url)
         body,_,status=request_once(robots_url)
         if body and status==200: parser.parse(body.decode("utf-8","ignore").splitlines())
+        elif status==404: parser.parse([])
         else: parser.parse(["User-agent: *","Disallow: /"])
         ROBOTS[origin]=parser
     return ROBOTS[origin].can_fetch(UA,url)
