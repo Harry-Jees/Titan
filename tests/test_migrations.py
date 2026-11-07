@@ -15,6 +15,18 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(db.execute("SELECT content FROM user_memories WHERE user_id=?", ("scope-a",)).fetchall(), [("private A",)])
         db.close()
 
+    def test_tool_and_training_tables_match_live_titan_schema(self):
+        db = sqlite3.connect(":memory:")
+        for migration in sorted((ROOT / "migrations").glob("*.sql")):
+            db.executescript(migration.read_text(encoding="utf-8"))
+        expected = {"api_tools", "pending_tool_calls", "tool_audit", "usage_limits",
+                    "training_preferences", "training_examples", "training_runs"}
+        actual = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        self.assertTrue(expected.issubset(actual))
+        columns = {row[1] for row in db.execute("PRAGMA table_info(memories)")}
+        self.assertTrue({"user_id", "updated_at"}.issubset(columns))
+        db.close()
+
     def test_conversation_role_constraint_and_index(self):
         db = sqlite3.connect(":memory:")
         for migration in sorted((ROOT / "migrations").glob("*.sql")):
