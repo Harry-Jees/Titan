@@ -74,6 +74,12 @@ Crawling must respect source terms, robots rules, copyright, privacy and applica
 ## Self-building
 The self-build workflow is manual and bounded. It only proposes changes in approved source/test/docs paths, runs checks and opens a PR for human review. It cannot edit workflows, dependencies, secrets, deployment configuration or migrations, and never auto-merges.
 
+## Public access
+
+The Worker serves a browser-based Titan chat interface at `/`. Visitors can use it without registration: the page requests an isolated anonymous session from `POST /public/session` and then sends authenticated chat requests on the visitor's behalf. Session capabilities are stored in that browser only. Public-use limits and the frontend integration contract are documented in [docs/PUBLIC-ACCESS.md](docs/PUBLIC-ACCESS.md).
+
+This is an anonymous public preview, not a user-account system. Do not store sensitive personal information in a shared browser, and do not share session tokens.
+
 ## Live integration boundary
 This repository ports the live tool registry, credential encryption, explicit POST approval, tool audit, daily quota and opt-in training curation patterns. Before replacing or integrating with the live API, port and test remaining authentication hardening, key rotation, rate limiting, and any live-only business logic. No production deployment or live database migration has been performed.
 
