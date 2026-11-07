@@ -67,3 +67,12 @@ export function isPublicSourceUrl(value: string): boolean {
   }
   return true;
 }
+
+export async function readJson<T = unknown>(request: Request, maxBytes = 20000): Promise<T> {
+  const declared = Number(request.headers.get("content-length") || "0");
+  if (Number.isFinite(declared) && declared > maxBytes) throw new Error("Request body too large");
+  const body = await request.text();
+  if (new TextEncoder().encode(body).length > maxBytes) throw new Error("Request body too large");
+  try { return JSON.parse(body) as T; }
+  catch { throw new Error("Invalid JSON body"); }
+}
