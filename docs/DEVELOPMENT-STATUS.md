@@ -18,8 +18,10 @@
 
 ## Verification
 - Original portable starter Python suite passed locally (27 tests).
-- Latest GitHub Actions run #106 (run ID 42375154081) passed on commit 0eba943ba6ae285222a35c14f9216f4d7ad72413: Python pytest, TypeScript typecheck and Vitest all succeeded.
-- The development branch is 104 commits ahead of main; draft PR #1 is open and unmerged.
+- Core code changes at commit 0eba943ba6ae285222a35c14f9216f4d7ad72413 passed run #106 (Python pytest, TypeScript typecheck and Vitest).
+- The status snapshot at commit 1fa13aec220b8310fd71510325f967db7e8d97b5 passed run #109 with both CI jobs successful.
+- The development branch is ahead of main; draft PR #1 is open and unmerged.
+- The noon research workflow is present on this branch but does not become active on the default branch until the PR is merged.
 - Read-only Cloudflare inspection found the live D1 schema already contains the current tool and training tables, but its migration ledger differs from this repository's sequence. No migration was applied; staging compatibility still needs a deliberate check.
 - No GPU training or teacher API call was run.
 
