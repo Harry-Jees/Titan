@@ -75,11 +75,15 @@ export function isPublicSourceUrl(value: string): boolean {
   return true;
 }
 
+export class RequestBodyError extends Error {
+  constructor(message: string, readonly status: number) { super(message); this.name = "RequestBodyError"; }
+}
+
 export async function readJson<T = unknown>(request: Request, maxBytes = 20000): Promise<T> {
   const declared = Number(request.headers.get("content-length") || "0");
-  if (Number.isFinite(declared) && declared > maxBytes) throw new Error("Request body too large");
+  if (Number.isFinite(declared) && declared > maxBytes) throw new RequestBodyError("Request body too large", 413);
   const body = await request.text();
-  if (new TextEncoder().encode(body).length > maxBytes) throw new Error("Request body too large");
+  if (new TextEncoder().encode(body).length > maxBytes) throw new RequestBodyError("Request body too large", 413);
   try { return JSON.parse(body) as T; }
-  catch { throw new Error("Invalid JSON body"); }
+  catch { throw new RequestBodyError("Invalid JSON body", 400); }
 }
