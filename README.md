@@ -53,6 +53,7 @@ Keep secrets out of source control. The fallback model is @cf/zai-org/glm-4.7-fl
 - DELETE /tools?name=...
 - GET /training/preferences, POST /training/preferences — explicit user opt-in/out
 - GET /training/examples, DELETE /training/examples?id=... — view or delete your own curation examples
+- GET /training/examples/export — export only your own approved examples as JSONL
 - POST /training/examples/review — approve/reject one of your own candidate examples
 - POST /knowledge, GET /knowledge?q=... (admin token)
 - POST /evaluate (admin token)
