@@ -284,6 +284,8 @@ export async function consumeDailyQuota(env: Env, userId: string): Promise<boole
 export async function createPendingToolCall(env: Env, userId: string, name: string, input: Record<string, unknown>): Promise<string | null> {
   const tool = await loadTool(env, userId, name);
   if (!tool || tool.method !== "POST" || !validToolTarget(tool.baseUrl, tool.path, allowedToolHosts(env))) return null;
+  const keys = Object.keys(input);
+  if (keys.length > 30 || keys.some(key => !tool.allowedBodyKeys.includes(key)) || JSON.stringify(input).length > 8000) return null;
   const fingerprint = await fingerprintTool(tool);
   const id = crypto.randomUUID();
   await env.DB.prepare("INSERT INTO pending_tool_calls(id,user_id,tool_name,input_json,tool_fingerprint) VALUES(?,?,?,?,?)")

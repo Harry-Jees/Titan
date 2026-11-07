@@ -175,7 +175,8 @@ export default {
               if(!pendingId) answer={text:"That tool is no longer available or is not on the trusted host allowlist. Nothing was sent; please prepare the action again.",model:plan.model};
               else {
                 confirmationId=pendingId;
-                answer={text:"I'm ready to call "+selected.name+": "+selected.description+". This is a POST request and may change data outside Titan. Confirm by sending this confirmation ID: "+confirmationId+". Nothing has been sent yet.",model:plan.model};
+                const preview=JSON.stringify(input);
+                answer={text:"I'm ready to call "+selected.name+": "+selected.description+". Proposed payload: "+preview+". This is a POST request and may change data outside Titan. Confirm by sending this confirmation ID: "+confirmationId+". Nothing has been sent yet.",model:plan.model};
               }
             } else {
               const callResult=await executeTool(env,scope,selected.name,input,false);

@@ -12,6 +12,17 @@ FORBIDDEN = (".github/", "package.json", "package-lock.json", "wrangler.toml", "
 def run(cmd):
     return subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
+def verify_candidate():
+    # Python is part of the editable source surface, so its regression suite must
+    # run after every generated patch as well as before the patch is proposed.
+    commands = (["npm", "run", "typecheck"], ["npm", "test"], ["python", "-m", "pytest", "-q"])
+    result = None
+    for command in commands:
+        result = run(list(command))
+        if result.returncode:
+            return result
+    return result
+
 def ask(messages):
     if not (BASE and KEY and MODEL):
         raise RuntimeError("Configure TITAN_API_BASE, TITAN_API_KEY and TITAN_MODEL repository secrets.")
@@ -86,10 +97,10 @@ def main():
         if applied.returncode:
             messages += [{"role":"assistant","content":answer},{"role":"user","content":"Patch application failed:\n"+applied.stdout+"Return a corrected complete diff only."}]
             continue
-        checks = run(["npm","run","typecheck"])
-        if checks.returncode == 0: checks = run(["npm","test"])
+        checks = verify_candidate()
         if checks.returncode == 0:
-            print("Patch passed checks."); print(run(["git","diff","--cached","--stat"]).stdout); return
+            print("TypeScript, Vitest and Python regression checks passed.")
+            print(run(["git","diff","--cached","--stat"]).stdout); return
         failure = checks.stdout[-10000:]
         subprocess.run(["git","reset","--hard","HEAD"],stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
         messages += [{"role":"assistant","content":answer},{"role":"user","content":"Checks failed:\n"+failure+"Repair the task and return a complete corrected diff only."}]
