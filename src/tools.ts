@@ -77,11 +77,13 @@ function parseServerTools(env: Env): Record<string, ToolDefinition> {
           !validKeys(item.allowedQuery || []) || !validKeys(item.allowedBodyKeys || [])) continue;
       if (item.method === "GET" && (item.allowedBodyKeys || []).length) continue;
       if (item.method === "POST" && (item.allowedQuery || []).length) continue;
+      const secretHeader = typeof item.secretHeader === "string" ? item.secretHeader.toLowerCase() : "authorization";
+      if (!/^[a-z][a-z0-9-]{0,63}$/.test(secretHeader) ||
+          ["host", "content-length", "cookie", "set-cookie", "proxy-authorization"].includes(secretHeader)) continue;
       output[name] = { name, description: item.description, baseUrl: item.baseUrl, path: item.path,
         method: item.method, allowedQuery: item.allowedQuery || [], allowedBodyKeys: item.allowedBodyKeys || [],
         secretEnv: typeof item.secretEnv === "string" ? item.secretEnv : undefined,
-        secretHeader: typeof item.secretHeader === "string" ? item.secretHeader : undefined,
-        source: "server-config" };
+        secretHeader, source: "server-config" };
     }
     return output;
   } catch { return {}; }
