@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAdmin, json, memoryScope, isPublicSourceUrl } from "../src/security";
+import { isAdmin, json, memoryScope, isPublicSourceUrl, readJson } from "../src/security";
 
 describe("security helpers", () => {
   it("requires the exact admin bearer token", () => {
@@ -24,6 +24,10 @@ describe("security helpers", () => {
     const env: any = { TITAN_AUTH_MAP_B64: btoa(JSON.stringify({ [token]: "user_42" })) };
     expect(await memoryScope(new Request("https://titan.test", { headers: { authorization: `Bearer ${token}` } }), env)).toBe("user_42");
     expect(await memoryScope(new Request("https://titan.test", { headers: { authorization: `Bearer ${"x".repeat(28)}` } }), env)).toBeNull();
+  });
+  it("rejects oversized JSON bodies before parsing", async () => {
+    const request = new Request("https://titan.test", { method: "POST", body: JSON.stringify({ content: "x".repeat(100) }) });
+    await expect(readJson(request, 20)).rejects.toThrow("Request body too large");
   });
   it("rejects weak tokens and unsafe source URLs", async () => {
     expect(await memoryScope(new Request("https://titan.test", { headers: { authorization: "Bearer weak" } }), {} as any)).toBeNull();
