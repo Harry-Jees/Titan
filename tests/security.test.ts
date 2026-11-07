@@ -45,6 +45,7 @@ describe("security helpers", () => {
     const db: any = {
       prepare(sql: string) {
         return {
+          run: async () => ({ meta: { changes: 0 } }),
           bind(...args: any[]) {
             return {
               run: async () => { if (sql.startsWith("INSERT INTO public_sessions")) insertedTokenHash = args[0]; return { meta: { changes: 1 } }; },
