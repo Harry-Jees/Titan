@@ -21,7 +21,7 @@ Requirements: Node.js 20+, npm, Python 3.11+.
     npm test
     python -m pytest -q
 
-Apply migrations 0001 through 0006 in numeric order to a **development** D1 database. The schemas are aligned with the current live Titan D1 table shapes, but must still be applied to a staging copy first. Do not run them against the live database from this repository.
+Apply migrations 0001 through 0007 in numeric order to a **development** D1 database. The schemas are aligned with the current live Titan D1 table shapes, but must still be applied to a staging copy first. Do not run them against the live database from this repository.
 
 ## Worker configuration
 Main Worker: wrangler.toml, entry src/index.ts.
@@ -38,6 +38,7 @@ Optional secrets/vars:
 - TITAN_AUTH_MAP_B64 (compatibility mapping; secret only)
 - TITAN_VAULT_KEY_B64 (32-byte AES-GCM key for provisioned API credentials)
 - TITAN_TOOL_REGISTRY (server-managed tool definitions)
+- TITAN_TOOL_HOST_ALLOWLIST (comma-separated exact trusted hostnames; no wildcards)
 - TITAN_DAILY_REQUEST_LIMIT (default 200 per user per UTC day)
 - TITAN_TRAINING_CRON_SECRET (optional HTTP trigger secret for the training worker)
 
@@ -60,7 +61,7 @@ Keep secrets out of source control. The fallback model is @cf/zai-org/glm-4.7-fl
 
 Conversation history is loaded server-side and scoped to the authenticated bearer namespace; client-supplied history is ignored. This is capability-token isolation, not a complete public account-authentication system. A public multi-user deployment still needs verified authentication, rate limits, abuse controls and key rotation.
 
-Registered GET tools can be selected by the model and run with strict parameter allowlists. POST tools create a 10-minute pending approval and are not sent until the matching confirmation ID is returned as confirmToolCall. Tool calls are audited. External tool metadata and responses are treated as untrusted data.
+Registered tools can be selected by the model and run with strict parameter allowlists. Provisioning and execution fail closed unless the target hostname exactly matches TITAN_TOOL_HOST_ALLOWLIST; do not add user-controlled domains, redirectors or untrusted hosts. POST tools create a 10-minute, single-use approval bound to a fingerprint of the tool definition; changing the tool invalidates the pending approval. Tool calls are audited. External tool metadata and responses are treated as untrusted data.
 
 ## Research and learning schedules
 - **12:00 PM IST (06:30 UTC):** GitHub Actions daily research workflow. It crawls public sitemaps with robots-aware access, host pacing and bounded downloads, plans coverage gaps, creates source-attributed chunks and uploads a cycle artifact. It does not call a teacher model or fine-tune.

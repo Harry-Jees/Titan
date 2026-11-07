@@ -27,6 +27,8 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(db.execute("SELECT enabled FROM training_preferences WHERE user_id=?", ("new-user",)).fetchone(), (0,))
         columns = {row[1] for row in db.execute("PRAGMA table_info(memories)")}
         self.assertTrue({"user_id", "updated_at"}.issubset(columns))
+        pending_columns = {row[1] for row in db.execute("PRAGMA table_info(pending_tool_calls)")}
+        self.assertIn("tool_fingerprint", pending_columns)
         db.close()
 
     def test_conversation_role_constraint_and_index(self):
