@@ -274,7 +274,8 @@ export async function recordToolAudit(env: Env, userId: string, name: string, re
 
 export async function consumeDailyQuota(env: Env, userId: string): Promise<boolean> {
   const raw = Number(env.TITAN_DAILY_REQUEST_LIMIT || "200");
-  const limit = Number.isFinite(raw) ? Math.max(1, Math.min(10000, Math.floor(raw))) : 200;
+  const configured = Number.isFinite(raw) ? Math.max(1, Math.min(10000, Math.floor(raw))) : 200;
+  const limit = userId.startsWith("public_") ? Math.min(configured, 30) : configured;
   const day = new Date().toISOString().slice(0, 10);
   const row = await env.DB.prepare("INSERT INTO usage_limits(user_id,day,requests) VALUES(?,?,1) ON CONFLICT(user_id,day) DO UPDATE SET requests=requests+1 WHERE requests < ? RETURNING requests")
     .bind(userId, day, limit).first<{ requests: number }>();
