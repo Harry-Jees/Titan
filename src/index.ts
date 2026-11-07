@@ -32,9 +32,12 @@ export default {
       }
 
       if (request.method === "GET" && url.pathname === "/health")
-        return json({ ok: true, service: "titan-ai-core", version: "0.2.0",
-          features: ["persistent-memory","conversation-history","encrypted-api-provisioning","model-driven-tool-selection","explicit-action-confirmation","daily-usage-limits","source-attributed-knowledge","candidate-training"],
-          modelMode: env.TITAN_API_BASE && env.TITAN_API_KEY && env.TITAN_MODEL ? "configured-provider" : "workers-ai-fallback" });
+        return json({ ok: true, service: "titan-ai-core", version: "0.3.0",
+          features: ["persistent-memory","conversation-history","anonymous-public-access","local-model-only-policy"],
+          modelMode: "local-model-not-connected",
+          hostedInference: false,
+          cloudflareAiBinding: false,
+          message: "Titan will not call hosted model APIs or Workers AI. Local model runtime is still being built." });
 
       if (url.pathname === "/tools" || url.pathname === "/tools/provision") {
         const scope = await memoryScope(request, env);
