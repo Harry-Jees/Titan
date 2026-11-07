@@ -1,4 +1,5 @@
 import unittest
+import training.train_lora as train_lora
 from training.train_lora import validate_training_rows, is_valid_source_url
 
 def row(index: int):
@@ -28,6 +29,21 @@ class TrainingDataValidationTests(unittest.TestCase):
             invalid=[row(i) for i in range(20)]
             invalid[0]={**invalid[0],"source_url":source}
             with self.assertRaises(SystemExit): validate_training_rows(invalid,[])
+
+    def test_user_conversation_data_requires_explicit_export_consent(self):
+        rows = []
+        for i in range(20):
+            rows.append({"instruction":f"Explain a user-approved concept number {i}.",
+                "response":f"This is a user-approved answer with sufficient detail for training example number {i}.",
+                "source_type":"user_conversation","consent":True})
+        with self.assertRaises(SystemExit):
+            validate_training_rows(rows, [])
+        train_lora.ALLOW_USER_CONVERSATION_DATA = True
+        try:
+            accepted = validate_training_rows(rows, [])
+            self.assertEqual(len(accepted), 20)
+        finally:
+            train_lora.ALLOW_USER_CONVERSATION_DATA = False
 
     def test_refuses_secret_shaped_training_content(self):
         rows=[row(i) for i in range(20)]
