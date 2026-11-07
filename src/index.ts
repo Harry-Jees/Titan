@@ -1,4 +1,5 @@
 import type { Env, ChatMessage } from "./types";
+import { publicHome } from "./public";
 import { complete } from "./model";
 import { json, isAdmin, memoryScope, isPublicSourceUrl, readJson, RequestBodyError, issuePublicSession, consumePublicIpQuota } from "./security";
 import { listTools, provisionTool, deleteTool, executeTool, recordToolAudit, consumeDailyQuota, createPendingToolCall, consumePendingToolCall } from "./tools";
@@ -22,6 +23,8 @@ export default {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, DELETE, OPTIONS", "access-control-allow-headers": "Authorization, Content-Type, X-Titan-Cron", "access-control-max-age": "86400" } });
     try {
+      if (request.method === "GET" && url.pathname === "/") return publicHome();
+
       if (request.method === "POST" && url.pathname === "/public/session") {\n        const session = await issuePublicSession(request, env);\n        if (!session.ok) return json({ error: session.error }, session.status);\n        return json({ ok: true, accessToken: session.accessToken, tokenType: "Bearer", expiresAt: session.expiresAt, access: "anonymous-public" }, 201);\n      }\n\n      if (request.method === "GET" && url.pathname === "/health")
         return json({ ok: true, service: "titan-ai-core", version: "0.2.0",
           features: ["persistent-memory","conversation-history","encrypted-api-provisioning","model-driven-tool-selection","explicit-action-confirmation","daily-usage-limits","source-attributed-knowledge","candidate-training"],
