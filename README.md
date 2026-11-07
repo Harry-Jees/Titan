@@ -2,7 +2,7 @@
 
 Titan is a separate, cloud-first personal agent. This repository contains a portable Cloudflare Workers foundation for chat, persistent memory, API tools, opt-in conversation curation, source-attributed knowledge, research automation, evaluation and bounded self-building.
 
-**Safety boundary:** this is a development repository, not a deployed replacement for the existing live Titan services. No live Worker, D1 database, credential, schedule, model weight or paid compute resource is changed by this work.
+**Deployment boundary:** the public preview runs as a separate Worker at [titan-ai-core.harryjees.workers.dev](https://titan-ai-core.harryjees.workers.dev/). It does not replace the existing live `titan-agent-api` or `titan-training-pipeline`. It reuses the existing `titan-memory` D1 database and creates only additive public-session and knowledge tables; existing rows and secrets are not rewritten.
 
 ## Stack
 - Cloudflare Workers + TypeScript
@@ -10,7 +10,7 @@ Titan is a separate, cloud-first personal agent. This repository contains a port
 - Configurable OpenAI-compatible inference with Workers AI fallback
 - Robots-aware public research crawler and source-attributed chunking
 - Opt-in conversation curation; candidate LoRA training is separate and manual
-- PR-only self-build workflow; no auto-merge or deployment
+- PR-only self-build workflow; no auto-merge. The separate public Worker auto-deploys only from `development/titan-foundation`.
 
 ## Local development
 Requirements: Node.js 20+, npm, Python 3.11+.
@@ -28,7 +28,7 @@ Main Worker: wrangler.toml, entry src/index.ts.
 
 Separate opt-in curation Worker: wrangler.training.toml, entry src/training-pipeline.ts, cron 30 3 * * * (09:00 IST).
 
-Both configs contain a placeholder D1 database ID. Replace it only with a development database ID before local testing or deployment.
+`wrangler.toml` binds the existing `titan-memory` D1 database for the isolated public preview. `wrangler.training.toml` remains a separate configuration; use a development database ID for local/staging training tests.
 
 Required bindings: DB (D1) and AI (Workers AI).
 
@@ -43,7 +43,7 @@ Optional secrets/vars:
 - TITAN_DAILY_REQUEST_LIMIT (default 200 per user per UTC day)
 - TITAN_TRAINING_CRON_SECRET (optional HTTP trigger secret for the training worker)
 
-Keep secrets out of source control. The fallback model is @cf/zai-org/glm-4.7-flash; availability and cost depend on provider and plan and are not guaranteed free.
+Keep secrets out of source control. The public preview uses `@cf/zai-org/glm-4.7-flash` through Cloudflare Workers AI free allocation. It has no paid model API configured; requests can fail when free daily quotas are exhausted.
 
 ## API
 - GET /health
@@ -60,7 +60,7 @@ Keep secrets out of source control. The fallback model is @cf/zai-org/glm-4.7-fl
 - POST /knowledge, GET /knowledge?q=... (admin token)
 - POST /evaluate (admin token)
 
-Conversation history is loaded server-side and scoped to the authenticated bearer namespace; client-supplied history is ignored. This is capability-token isolation, not a complete public account-authentication system. A public multi-user deployment still needs verified authentication, rate limits, abuse controls and key rotation.
+Conversation history is loaded server-side and scoped to the bearer namespace; client-supplied history is ignored. The public page obtains a random anonymous capability from `POST /public/session`; sessions are isolated per browser and rate-limited per session and network. This is anonymous capability-based access, not a user-account or identity-verification system. Admin and knowledge-ingestion routes remain protected.
 
 Registered tools can be selected by the model and run with strict parameter allowlists. Provisioning and execution fail closed unless the target hostname exactly matches TITAN_TOOL_HOST_ALLOWLIST; do not add user-controlled domains, redirectors or untrusted hosts. Server-managed tools may reference only dedicated TITAN_TOOL_SECRET_* bindings, never general model, auth or admin secrets. POST tools create a 10-minute, single-use approval bound to a fingerprint of the tool definition; changing the tool invalidates the pending approval. Tool calls are audited. External tool metadata and responses are treated as untrusted data.
 
@@ -81,6 +81,6 @@ The public Titan preview is live: [Open Titan](https://titan-ai-core.harryjees.w
 This is an anonymous public preview, not a user-account system. Do not store sensitive personal information in a shared browser, and do not share session tokens.
 
 ## Live integration boundary
-This repository ports the live tool registry, credential encryption, explicit POST approval, tool audit, daily quota and opt-in training curation patterns. Before replacing or integrating with the live API, port and test remaining authentication hardening, key rotation, rate limiting, and any live-only business logic. No production deployment or live database migration has been performed.
+This repository ports the live tool registry, credential encryption, explicit POST approval, tool audit, daily quota and opt-in training curation patterns. Before replacing or integrating with the live API, port and test remaining authentication hardening, key rotation, rate limiting, and any live-only business logic. The public preview is deployed separately. The existing live API has not been replaced, and no existing live user rows, credentials or auth secrets have been rewritten.
 
 See docs/DEVELOPMENT-STATUS.md, docs/LIVE-INTEGRATION.md and docs/ROADMAP.md.
