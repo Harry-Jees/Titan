@@ -38,7 +38,7 @@ Required bindings: `DB` (D1) and `AI` (Workers AI). Optional secrets: `TITAN_ADM
 Conversation history is loaded server-side and scoped to the bearer namespace; client-supplied history is ignored. This is capability-token isolation, not a complete public account-authentication system. A public multi-user deployment still needs verified authentication, rate limits, abuse controls and key rotation.
 
 ## Learning and self-building
-The daily learning workflow is scheduled for 06:30 UTC (12:00 PM IST), subject to GitHub Actions delays. It can crawl configured public sources, curate grounded examples, attempt candidate LoRA training and evaluate candidates against a held-out suite. Provider calls can incur charges; configure them only with an approved budget. Crawling must respect source terms, robots rules, copyright, privacy and applicable law. No adapter is auto-promoted, merged or deployed.
+The daily learning workflow is scheduled for 06:30 UTC (12:00 PM IST), subject to GitHub Actions delays. It can crawl configured public sources, curate grounded examples, attempt candidate LoRA training and evaluate candidates against a held-out suite. Provider calls can incur charges; configure them only with an approved budget. Crawling must respect source terms, robots rules, copyright, privacy and applicable law. No adapter is auto-promoted, merged or deployed. Apply the training worker config separately and only to a development D1 database until the live schema has been staged and reviewed.
 
 The self-build workflow is constrained and PR-only. Review every proposed change.
 
