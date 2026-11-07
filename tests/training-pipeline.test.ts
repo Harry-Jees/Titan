@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { containsSensitiveContent, pairConversationRows } from "../src/training-pipeline";
+import { containsSensitiveContent, pairConversationRows, gradePair } from "../src/training-pipeline";
 
 function row(id: string, user: string, conversation: string, role: "user" | "assistant", content: string) {
   return { id, user_id: user, conversation_id: conversation, role, content, created_at: "2026-11-07 12:00:00" };
@@ -25,4 +25,15 @@ describe("opt-in training curation privacy", () => {
     expect(pairs[0].user.user_id).toBe("user-a");
     expect(pairs[1].user.user_id).toBe("user-b");
   });
+  it("scores candidates deterministically without any model provider", () => {
+    const pair = {
+      user: row("u9", "user-a", "conv-z", "user", "Explain how database indexes improve query performance with an example."),
+      assistant: row("a9", "user-a", "conv-z", "assistant", "Database indexes help the database find rows efficiently. For example, an index on an email column avoids scanning every row. Therefore, queries can be faster when the index is selective.")
+    };
+    const result = gradePair(pair);
+    expect(result.unsafe).toBe(false);
+    expect(result.score).toBeGreaterThan(50);
+    expect(result.labels).toContain("heuristic_review_required");
+  });
+
 });
