@@ -1,0 +1,12 @@
+name = "titan-ai-core"
+workers_dev = true
+preview_urls = false
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+
+[[d1_databases]]
+binding = "DB"
+database_name = "titan-memory"
+database_id = "a845bcf3-5e8b-4ac3-aa24-fcd7396f743f"
+
