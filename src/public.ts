@@ -35,7 +35,7 @@ main{flex:1;display:flex;flex-direction:column;width:100%;max-width:760px;margin
 <section id="messages" aria-live="polite"></section>
 <div class="composer"><div class="composebox"><textarea id="prompt" rows="2" placeholder="Message Titan…" aria-label="Message Titan"></textarea><div class="composefoot"><span class="hint">Enter to send · Shift + Enter for a new line</span><button class="send" id="send">Send ↗</button></div></div></div>
 </main>
-<footer class="bottom"><span>Anonymous session · Your chats stay in this browser session</span><button class="newchat" id="newchat">＋ New conversation</button></footer>
+<footer class="bottom"><span>Anonymous session · Access stays in this browser profile</span><button class="newchat" id="newchat">＋ New conversation</button></footer>
 </div>
 <script>
 const $=id=>document.getElementById(id);
