@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAdmin, json, memoryScope, isPublicSourceUrl, readJson } from "../src/security";
+import { isAdmin, json, memoryScope, isPublicSourceUrl, readJson, RequestBodyError } from "../src/security";
 
 describe("security helpers", () => {
   it("requires the exact admin bearer token", () => {
@@ -29,6 +29,11 @@ describe("security helpers", () => {
   it("rejects oversized JSON bodies before parsing", async () => {
     const request = new Request("https://titan.test", { method: "POST", body: JSON.stringify({ content: "x".repeat(100) }) });
     await expect(readJson(request, 20)).rejects.toThrow("Request body too large");
+  });
+  it("returns a client error for malformed JSON", async () => {
+    const request = new Request("https://titan.test", { method: "POST", body: "{" });
+    await expect(readJson(request)).rejects.toBeInstanceOf(RequestBodyError);
+    await expect(readJson(new Request("https://titan.test", { method: "POST", body: "{" }))).rejects.toMatchObject({ status: 400 });
   });
   it("rejects weak tokens and unsafe source URLs", async () => {
     expect(await memoryScope(new Request("https://titan.test", { headers: { authorization: "Bearer weak" } }), {} as any)).toBeNull();
