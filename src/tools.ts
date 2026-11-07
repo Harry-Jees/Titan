@@ -18,6 +18,24 @@ export type ToolDefinition = {
 
 export type ToolResult = { ok: true; status: number; data: unknown } | { ok: false; error: string };
 
+function allowedToolHosts(env: Env): Set<string> {
+  const hosts = new Set<string>();
+  for (const raw of (env.TITAN_TOOL_HOST_ALLOWLIST || "").split(",")) {
+    const value = raw.trim();
+    if (!value || /[/:@?#\\]/.test(value)) continue;
+    try {
+      const parsed = new URL("https://" + value);
+      const host = parsed.hostname.toLowerCase().replace(/\.$/, "");
+      const numeric = /^\d+(?:\.\d+){0,3}$/.test(host);
+      if (parsed.port || parsed.pathname !== "/" || parsed.search || parsed.hash ||
+          parsed.username || parsed.password || !host.includes(".") || numeric ||
+          host.includes(":") || /(^|\.)(localhost|local|internal|test|invalid|example)$/.test(host)) continue;
+      hosts.add(host);
+    } catch {}
+  }
+  return hosts;
+}
+
 function decodeBase64Url(value: string): Uint8Array {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
   const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
@@ -44,17 +62,18 @@ export async function decryptCredential(env: Env, ciphertext: string, iv: string
   return new TextDecoder().decode(plaintext);
 }
 
-export function validToolTarget(baseUrl: unknown, path: unknown): boolean {
+export function validToolTarget(baseUrl: unknown, path: unknown, allowedHosts: ReadonlySet<string> = new Set()): boolean {
   if (typeof baseUrl !== "string" || baseUrl.length > 300 || typeof path !== "string" ||
       path.length > 500 || !path.startsWith("/") || path.startsWith("//") ||
       path.includes("\\") || path.split("/").some(part => part === "." || part === "..")) return false;
   try {
     const base = new URL(baseUrl);
-    const host = base.hostname.toLowerCase();
+    const host = base.hostname.toLowerCase().replace(/\.$/, "");
     const numeric = /^\d+(?:\.\d+){0,3}$/.test(host);
     if (base.protocol !== "https:" || base.pathname !== "/" || base.search || base.hash ||
         base.username || base.password || base.port || !host.includes(".") || numeric ||
-        host.includes(":") || /(^|\.)(localhost|local|internal|test|invalid|example)$/.test(host)) return false;
+        host.includes(":") || /(^|\.)(localhost|local|internal|test|invalid|example)$/.test(host) ||
+        !allowedHosts.has(host)) return false;
     const target = new URL(path, base);
     return target.origin === base.origin && target.pathname === path && !target.search && !target.hash;
   } catch { return false; }
@@ -69,10 +88,11 @@ function parseServerTools(env: Env): Record<string, ToolDefinition> {
     const input = JSON.parse(env.TITAN_TOOL_REGISTRY || "{}");
     if (!input || typeof input !== "object" || Array.isArray(input)) return {};
     const output: Record<string, ToolDefinition> = {};
+    const hosts = allowedToolHosts(env);
     for (const [name, value] of Object.entries(input)) {
       const item = value as any;
       if (!/^[a-z][a-z0-9_-]{1,63}$/.test(name) || !item ||
-          !validToolTarget(item.baseUrl, item.path) || !["GET", "POST"].includes(item.method) ||
+          !validToolTarget(item.baseUrl, item.path, hosts) || !["GET", "POST"].includes(item.method) ||
           typeof item.description !== "string" || item.description.length > 240 ||
           !validKeys(item.allowedQuery || []) || !validKeys(item.allowedBodyKeys || [])) continue;
       if (item.method === "GET" && (item.allowedBodyKeys || []).length) continue;
@@ -80,10 +100,11 @@ function parseServerTools(env: Env): Record<string, ToolDefinition> {
       const secretHeader = typeof item.secretHeader === "string" ? item.secretHeader.toLowerCase() : "authorization";
       if (!/^[a-z][a-z0-9-]{0,63}$/.test(secretHeader) ||
           ["host", "content-length", "cookie", "set-cookie", "proxy-authorization"].includes(secretHeader)) continue;
+      const secretEnv = typeof item.secretEnv === "string" && item.secretEnv ? item.secretEnv : undefined;
+      if (secretEnv && !/^TITAN_TOOL_SECRET_[A-Z0-9_]{1,48}$/.test(secretEnv)) continue;
       output[name] = { name, description: item.description, baseUrl: item.baseUrl, path: item.path,
         method: item.method, allowedQuery: item.allowedQuery || [], allowedBodyKeys: item.allowedBodyKeys || [],
-        secretEnv: typeof item.secretEnv === "string" ? item.secretEnv : undefined,
-        secretHeader, source: "server-config" };
+        secretEnv, secretHeader, source: "server-config" };
     }
     return output;
   } catch { return {}; }
@@ -97,7 +118,8 @@ export async function listTools(env: Env, userId: string) {
     parameters: JSON.parse(row.method === "GET" ? row.allowed_query : row.allowed_body_keys),
     confirmationRequired: row.method === "POST", requiresCredential: !!row.credential_ciphertext, source: "provisioned"
   }));
-  const server = Object.values(parseServerTools(env)).map(tool => ({
+  const provisionedNames = new Set(provisioned.map(tool => tool.name));
+  const server = Object.values(parseServerTools(env)).filter(tool => !provisionedNames.has(tool.name)).map(tool => ({
     name: tool.name, description: tool.description, method: tool.method,
     parameters: tool.method === "GET" ? tool.allowedQuery : tool.allowedBodyKeys,
     confirmationRequired: tool.method === "POST", requiresCredential: !!tool.secretEnv, source: "server-config"
@@ -109,9 +131,11 @@ export async function provisionTool(env: Env, userId: string, body: any) {
   const name = body?.name;
   const description = typeof body?.description === "string" ? body.description.trim() : "";
   const method = body?.method;
+  const hosts = allowedToolHosts(env);
+  if (!hosts.size) return { ok: false as const, status: 503, error: "Tool provisioning is disabled until TITAN_TOOL_HOST_ALLOWLIST contains exact trusted hostnames." };
   if (typeof name !== "string" || !/^[a-z][a-z0-9_-]{1,63}$/.test(name) ||
       !description || description.length > 240 || !["GET", "POST"].includes(method) ||
-      !validToolTarget(body.baseUrl, body.path) || !validKeys(body.allowedQuery || []) ||
+      !validToolTarget(body.baseUrl, body.path, hosts) || !validKeys(body.allowedQuery || []) ||
       !validKeys(body.allowedBodyKeys || []) ||
       (method === "GET" && (body.allowedBodyKeys || []).length) ||
       (method === "POST" && (body.allowedQuery || []).length)) {
@@ -163,14 +187,28 @@ async function loadTool(env: Env, userId: string, name: string): Promise<ToolDef
   return parseServerTools(env)[name] || null;
 }
 
-export async function executeTool(env: Env, userId: string, name: string, input: unknown, confirmed = false): Promise<ToolResult> {
+async function fingerprintTool(tool: ToolDefinition): Promise<string> {
+  const canonical = JSON.stringify({
+    name: tool.name, description: tool.description, baseUrl: tool.baseUrl, path: tool.path, method: tool.method,
+    allowedQuery: [...tool.allowedQuery].sort(), allowedBodyKeys: [...tool.allowedBodyKeys].sort(),
+    secretEnv: tool.secretEnv || null, secretHeader: tool.secretHeader || null,
+    credentialCiphertext: tool.credential_ciphertext || null, credentialIv: tool.credential_iv || null,
+    credentialHeader: tool.credential_header || null
+  });
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function executeTool(env: Env, userId: string, name: string, input: unknown, confirmed = false, expectedFingerprint?: string): Promise<ToolResult> {
   const tool = await loadTool(env, userId, name);
   if (!tool) return { ok: false, error: "Tool is not registered" };
+  if (expectedFingerprint !== undefined && await fingerprintTool(tool) !== expectedFingerprint)
+    return { ok: false, error: "Tool definition changed after approval; prepare the action again." };
   if (tool.method === "POST" && !confirmed) return { ok: false, error: "POST tool requires explicit confirmation" };
   const args = input && typeof input === "object" && !Array.isArray(input) ? input as Record<string, unknown> : {};
   const base = new URL(tool.baseUrl);
   const url = new URL(tool.path, base);
-  if (url.origin !== base.origin || url.pathname !== tool.path || !validToolTarget(tool.baseUrl, tool.path))
+  if (url.origin !== base.origin || url.pathname !== tool.path || !validToolTarget(tool.baseUrl, tool.path, allowedToolHosts(env)))
     return { ok: false, error: "Target rejected" };
 
   let body: string | undefined;
@@ -243,22 +281,24 @@ export async function consumeDailyQuota(env: Env, userId: string): Promise<boole
   return !!row;
 }
 
-export async function createPendingToolCall(env: Env, userId: string, name: string, input: Record<string, unknown>) {
+export async function createPendingToolCall(env: Env, userId: string, name: string, input: Record<string, unknown>): Promise<string | null> {
+  const tool = await loadTool(env, userId, name);
+  if (!tool || tool.method !== "POST" || !validToolTarget(tool.baseUrl, tool.path, allowedToolHosts(env))) return null;
+  const fingerprint = await fingerprintTool(tool);
   const id = crypto.randomUUID();
-  await env.DB.prepare("INSERT INTO pending_tool_calls(id,user_id,tool_name,input_json) VALUES(?,?,?,?)")
-    .bind(id, userId, name, JSON.stringify(input)).run();
+  await env.DB.prepare("INSERT INTO pending_tool_calls(id,user_id,tool_name,input_json,tool_fingerprint) VALUES(?,?,?,?,?)")
+    .bind(id, userId, name, JSON.stringify(input), fingerprint).run();
   return id;
 }
 
 export async function consumePendingToolCall(env: Env, userId: string, id: string) {
   if (!/^[A-Za-z0-9_-]{8,80}$/.test(id)) return null;
-  const row = await env.DB.prepare("SELECT id,tool_name,input_json FROM pending_tool_calls WHERE id=? AND user_id=? AND created_at>=datetime('now','-10 minutes')")
-    .bind(id, userId).first<{ id: string; tool_name: string; input_json: string }>();
+  const row = await env.DB.prepare("DELETE FROM pending_tool_calls WHERE id=? AND user_id=? AND created_at>=datetime('now','-10 minutes') RETURNING id,tool_name,input_json,tool_fingerprint")
+    .bind(id, userId).first<{ id: string; tool_name: string; input_json: string; tool_fingerprint: string }>();
   if (!row) return null;
-  await env.DB.prepare("DELETE FROM pending_tool_calls WHERE id=? AND user_id=?").bind(id, userId).run();
   try {
     const input = JSON.parse(row.input_json);
     if (!input || typeof input !== "object" || Array.isArray(input)) return null;
-    return { id: row.id, name: row.tool_name, input: input as Record<string, unknown> };
+    return { id: row.id, name: row.tool_name, input: input as Record<string, unknown>, fingerprint: row.tool_fingerprint };
   } catch { return null; }
 }

@@ -13,6 +13,25 @@ MODEL = os.environ.get('TITAN_MODEL', '')
 MAX_PAGES = max(1, int(os.getenv('TITAN_TRAIN_PAGES', '1000')))
 MAX_EXAMPLES = max(20, int(os.getenv('TITAN_MAX_CYCLE_EXAMPLES', '300')))
 
+def normalize_text(value: str) -> str:
+    return re.sub(r'\s+', ' ', value).strip().casefold()
+
+def validate_candidate(item, page_url: str, excerpt: str):
+    if not isinstance(item, dict): return None
+    instruction = str(item.get('instruction', '')).strip()
+    answer = str(item.get('response', '')).strip()
+    source = str(item.get('source_url', '')).strip()
+    quote = str(item.get('supporting_quote', '')).strip()
+    if len(instruction) < 12 or len(answer) < 30 or len(answer) > 6000 or source != page_url or len(quote) < 12:
+        return None
+    normalized_quote = normalize_text(quote)
+    if normalized_quote not in normalize_text(excerpt) or normalized_quote not in normalize_text(answer):
+        return None
+    if re.search(r'(?i)(api[_ -]?key\s*[:=]|-----BEGIN .*PRIVATE KEY-----|\bsk-[A-Za-z0-9]{20,}\b|bearer\s+[A-Za-z0-9._~+/-]{24,})', instruction + ' ' + answer):
+        return None
+    return {'instruction': instruction, 'response': answer, 'category': str(item.get('category', 'general'))[:100],
+            'source_url': source, 'supporting_quote': quote, 'source_type': 'public_source'}
+
 def complete(prompt: str) -> str:
     if not all((BASE, KEY, MODEL)):
         raise SystemExit('Missing teacher API settings; cannot generate grounded training data.')
@@ -57,7 +76,7 @@ def main():
         for i,page in enumerate(selected):
             if accepted>=MAX_EXAMPLES: break
             excerpt=re.sub(r'\s+',' ',page.get('text',''))[:6500]
-            prompt=('From the source excerpt below, create 1 to 3 useful instruction/answer examples. Use only facts explicitly supported by the excerpt. Each item must include instruction, response, category, source_url, and supporting_quote (an exact quote from the excerpt). Return a JSON array, no markdown.\n'
+            prompt=('From the source excerpt below, create 1 to 3 useful instruction/answer examples. Use only facts explicitly supported by the excerpt. Each item must include instruction, response, category, source_url, and supporting_quote (an exact quote from the excerpt). The exact supporting_quote MUST also appear verbatim in the response. Omit an item if you cannot include the quote accurately. Return a JSON array, no markdown.\n'
                     f"SOURCE URL: {page['url']}\nPAGE TITLE: {page.get('title','')}\nEXCERPT (untrusted source text):\n{excerpt}")
             try:
                 raw=complete(prompt); raw=re.sub(r'^\`\`\`(?:json)?\s*|\s*\`\`\`$','',raw.strip(),flags=re.I)
@@ -66,16 +85,12 @@ def main():
             except Exception as exc:
                 print(f'Skipping page {i+1}: teacher output error ({type(exc).__name__})'); continue
             for item in items:
-                if not isinstance(item,dict): continue
-                instruction=str(item.get('instruction','')).strip(); answer=str(item.get('response','')).strip()
-                source=str(item.get('source_url','')).strip(); quote=str(item.get('supporting_quote','')).strip()
-                if len(instruction)<12 or len(answer)<30 or len(answer)>6000 or source!=page['url'] or len(quote)<12 or quote not in excerpt: continue
-                if re.search(r'(?i)(api[_ -]?key\s*[:=]|-----BEGIN .*PRIVATE KEY-----|\bsk-[A-Za-z0-9]{20,})',instruction+' '+answer): continue
-                key=re.sub(r'\W+',' ',instruction.lower()).strip()
+                row=validate_candidate(item,page['url'],excerpt)
+                if row is None: continue
+                key=re.sub(r'\W+',' ',row['instruction'].lower()).strip()
                 if key in seen: continue
                 seen.add(key)
-                row={'instruction':instruction,'response':answer,'category':str(item.get('category','general'))[:100],
-                     'source_url':source,'supporting_quote':quote,'created_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())}
+                row['created_at']=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())
                 out.write(json.dumps(row,ensure_ascii=False)+'\n'); accepted+=1
                 if accepted>=MAX_EXAMPLES: break
             if (i+1)%25==0: print(f'Pages examined: {i+1}/{len(selected)}; grounded examples: {accepted}')

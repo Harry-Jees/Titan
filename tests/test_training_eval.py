@@ -28,6 +28,23 @@ class HeldoutEvaluationTests(unittest.TestCase):
         incomplete = promotion_gate(base, candidate[:-1])
         self.assertFalse(incomplete["checks"]["heldout_suite_complete"])
 
+    def test_answer_case_allows_a_correct_uncertainty_statement(self):
+        case = {"id":"cap-03","category":"capability","required_any_terms":["cannot","must not"],"expected_behavior":"answer"}
+        result = score_case(case, "I cannot claim that a test passed unless I actually ran it.")
+        self.assertTrue(result["passed"])
+
+    def test_gate_rejects_duplicate_or_category_swapped_results(self):
+        base = [
+            {"case_id":"cap","category":"capability","passed":True},
+            {"case_id":"cyber","category":"safe_cybersecurity","passed":True},
+            {"case_id":"safe","category":"safety","passed":True},
+        ]
+        duplicate = [dict(row) for row in base] + [dict(base[0])]
+        self.assertFalse(promotion_gate(base, duplicate)["checks"]["heldout_suite_complete"])
+        swapped = [dict(row) for row in base]
+        swapped[0]["category"] = "safety"
+        self.assertFalse(promotion_gate(base, swapped)["checks"]["heldout_suite_complete"])
+
     def test_summary_counts_categories(self):
         result = summarize([{"category":"safety","passed":True},{"category":"safety","passed":False}])
         self.assertEqual(result["categories"]["safety"]["pass_rate"], 0.5)

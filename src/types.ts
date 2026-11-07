@@ -9,6 +9,7 @@ export interface Env {
   TITAN_ADMIN_TOKEN?: string;
   TITAN_AUTH_MAP_B64?: string;
   TITAN_TOOL_REGISTRY?: string;
+  TITAN_TOOL_HOST_ALLOWLIST?: string;
   TITAN_VAULT_KEY_B64?: string;
   TITAN_DAILY_REQUEST_LIMIT?: string;
   TITAN_TRAINING_MODEL?: string;
