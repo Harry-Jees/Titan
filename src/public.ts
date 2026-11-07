@@ -25,7 +25,7 @@ main{flex:1;display:flex;flex-direction:column;width:100%;max-width:760px;margin
 <div class="shell">
 <header><div class="brand"><div class="mark">T</div><span>Titan</span></div><div class="status"><span class="dot"></span><span id="state">Connecting</span></div></header>
 <main>
-<section class="welcome" id="welcome"><div class="eyebrow">Your AI agent</div><h1>Think beyond<br>the obvious.</h1><p>Ask questions, explore ideas, research a topic or work through a problem. Titan is ready.</p></section>
+<section class="welcome" id="welcome"><div class="eyebrow">Your independent agent</div><h1>Think beyond<br>the obvious.</h1><p>Titan is being rebuilt around its own locally running model. Public access stays open; no cloud model is used.</p></section>
 <section class="suggestions" id="suggestions">
 <button class="suggestion">Help me understand a difficult technical concept.</button>
 <button class="suggestion">Research the latest developments in AI.</button>
@@ -48,7 +48,7 @@ async function bootstrap(force=false){
   const response=await fetch("/public/session",{method:"POST"});
   const data=await response.json().catch(()=>({}));
   if(!response.ok||!data.accessToken)throw new Error(data.error||"Could not start a public session.");
-  token=data.accessToken;localStorage.setItem(tokenKey,token);setState("Ready");return token;
+  token=data.accessToken;localStorage.setItem(tokenKey,token);setState("Local model setup in progress");return token;
 }
 function addMessage(role,text,model,sources){
   const node=document.createElement("article");node.className="message "+role;node.textContent=text;
@@ -77,7 +77,7 @@ $("send").addEventListener("click",()=>{const text=$("prompt").value;$("prompt")
 $("prompt").addEventListener("keydown",event=>{if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();$("send").click()}});
 $("suggestions").addEventListener("click",event=>{const button=event.target.closest("button");if(button){$("prompt").value=button.textContent;$("send").click()}});
 $("newchat").addEventListener("click",()=>{if(busy)return;conversationId="";localStorage.removeItem(conversationKey);$("messages").replaceChildren();$("welcome").hidden=false;$("suggestions").hidden=false;$("prompt").focus()});
-bootstrap().then(()=>setState("Ready")).catch(error=>setState(error.message));
+bootstrap().then(()=>setState("Local model setup in progress")).catch(error=>setState(error.message));
 </script>
 </body>
 </html>`;
