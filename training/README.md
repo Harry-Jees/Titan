@@ -14,3 +14,7 @@ This pipeline creates a **candidate LoRA adapter**, not a new foundation model a
 
 ## Caveats
 The held-out set is small and keyword-oriented. It is a regression smoke test, not comprehensive safety certification, factuality grading or human review. Free GPU availability is not guaranteed. Training can fail due to memory, runtime or model-download limits.
+
+## User-approved conversation examples
+
+Conversation curation is disabled by default. A user must enable training in the app, inspect the candidate examples, and explicitly approve each example. They can delete individual examples or all of their examples at any time. The authenticated export endpoint returns only approved examples as JSONL. To include those rows in a candidate LoRA run, set TITAN_ALLOW_USER_CONVERSATION_DATA=true; the training script still checks secrets, held-out overlap, duplicates and minimum example counts. Do not combine another user's data or export it without their consent.
