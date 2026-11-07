@@ -25,7 +25,13 @@ export default {
     try {
       if (request.method === "GET" && url.pathname === "/") return publicHome();
 
-      if (request.method === "POST" && url.pathname === "/public/session") {\n        const session = await issuePublicSession(request, env);\n        if (!session.ok) return json({ error: session.error }, session.status);\n        return json({ ok: true, accessToken: session.accessToken, tokenType: "Bearer", expiresAt: session.expiresAt, access: "anonymous-public" }, 201);\n      }\n\n      if (request.method === "GET" && url.pathname === "/health")
+      if (request.method === "POST" && url.pathname === "/public/session") {
+        const session = await issuePublicSession(request, env);
+        if (!session.ok) return json({ error: session.error }, session.status);
+        return json({ ok: true, accessToken: session.accessToken, tokenType: "Bearer", expiresAt: session.expiresAt, access: "anonymous-public" }, 201);
+      }
+
+      if (request.method === "GET" && url.pathname === "/health")
         return json({ ok: true, service: "titan-ai-core", version: "0.2.0",
           features: ["persistent-memory","conversation-history","encrypted-api-provisioning","model-driven-tool-selection","explicit-action-confirmation","daily-usage-limits","source-attributed-knowledge","candidate-training"],
           modelMode: env.TITAN_API_BASE && env.TITAN_API_KEY && env.TITAN_MODEL ? "configured-provider" : "workers-ai-fallback" });
@@ -120,7 +126,8 @@ export default {
       if (request.method === "POST" && url.pathname === "/chat") {
         const scope = await memoryScope(request, env);
         if (!scope) return json({ error: "Unauthorized" }, 401);
-        if (scope.startsWith("public_") && !await consumePublicIpQuota(request, env)) return json({ error: "Public daily network request limit reached" }, 429);\n        if (!await consumeDailyQuota(env, scope)) return json({ error: "Daily request limit reached" }, 429);
+        if (scope.startsWith("public_") && !await consumePublicIpQuota(request, env)) return json({ error: "Public daily network request limit reached" }, 429);
+        if (!await consumeDailyQuota(env, scope)) return json({ error: "Daily request limit reached" }, 429);
         const body = await readJson(request) as { message?: string; conversationId?: string; confirmToolCall?: string };
         if (typeof body.message !== "string" || !body.message.trim()) return json({ error: "message is required" }, 400);
         if (body.message.length > 12000) return json({ error: "message exceeds the 12000-character limit" }, 413);
