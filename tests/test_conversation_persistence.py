@@ -11,7 +11,7 @@ class ConversationPersistenceContractTests(unittest.TestCase):
         self.assertIn("historyRows", SOURCE)
 
     def test_history_query_is_scoped_by_user_and_conversation(self):
-        normalized = re.sub(r"\\s+", " ", SOURCE).lower()
+        normalized = re.sub(r"\s+", " ", SOURCE).lower()
         self.assertIn("where user_id=? and conversation_id=? and role in ('user','assistant')", normalized)
 
     def test_chat_persists_user_and_assistant_turns(self):
@@ -19,7 +19,7 @@ class ConversationPersistenceContractTests(unittest.TestCase):
         self.assertIn("answer.text.slice(0,12000)", SOURCE)
 
     def test_conversation_list_and_delete_are_user_scoped(self):
-        normalized = re.sub(r"\\s+", " ", SOURCE).lower()
+        normalized = re.sub(r"\s+", " ", SOURCE).lower()
         self.assertIn("where user_id=? group by conversation_id", normalized)
         self.assertIn("delete from conversations where user_id=? and conversation_id=?", normalized)
 
@@ -28,7 +28,7 @@ class ConversationPersistenceContractTests(unittest.TestCase):
         self.assertIn("ORDER BY rowid DESC LIMIT 10000", SOURCE)
 
     def test_message_limit_is_enforced(self):
-        self.assertRegex(SOURCE, re.compile(r'body\\.message\\.length\\s*>\\s*12000'))
+        self.assertRegex(SOURCE, re.compile(r'body\.message\.length\s*>\s*12000'))
 
 if __name__ == "__main__":
     unittest.main()
