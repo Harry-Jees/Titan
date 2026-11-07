@@ -3,7 +3,14 @@ import type { Env } from "./types";
 export function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
+      "access-control-allow-headers": "Authorization, Content-Type, X-Titan-Cron",
+      "access-control-max-age": "86400"
+    }
   });
 }
 
