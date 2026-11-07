@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { encryptCredential, decryptCredential, validToolTarget, consumeDailyQuota, consumePendingToolCall, provisionTool } from "../src/tools";
+import { encryptCredential, decryptCredential, validToolTarget, consumeDailyQuota, consumePendingToolCall, provisionTool, createPendingToolCall, executeTool } from "../src/tools";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -29,6 +29,33 @@ describe("registered API tool safety", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.status).toBe(503);
     expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it("invalidates a pending approval when the registered tool definition changes", async () => {
+    let row: any = {
+      name: "write_item", description: "Create one item", base_url: "https://api.example.org",
+      path: "/v1/items", method: "POST", allowed_query: "[]", allowed_body_keys: '["item"]',
+      credential_ciphertext: null, credential_iv: null, credential_header: "authorization"
+    };
+    let inserted: unknown[] = [];
+    const prepare = vi.fn((sql: string) => {
+      if (sql.startsWith("SELECT * FROM api_tools")) return { bind: () => ({ first: async () => row }) };
+      if (sql.startsWith("INSERT INTO pending_tool_calls")) return {
+        bind: (...args: unknown[]) => ({ run: async () => { inserted = args; return { meta: { changes: 1 } }; } })
+      };
+      throw new Error("Unexpected SQL in test: " + sql);
+    });
+    const env: any = { DB: { prepare }, TITAN_TOOL_HOST_ALLOWLIST: "api.example.org" };
+    const id = await createPendingToolCall(env, "user-a", "write_item", { item: "safe" });
+    expect(id).toBeTruthy();
+    const fingerprint = inserted[4] as string;
+    expect(fingerprint).toMatch(/^[a-f0-9]{64}$/);
+    row = { ...row, description: "Changed after approval" };
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await executeTool(env, "user-a", "write_item", { item: "safe" }, true, fingerprint);
+    expect(result.ok).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("consumes a pending approval with one atomic, user-scoped DELETE RETURNING", async () => {
