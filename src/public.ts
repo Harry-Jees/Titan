@@ -1,4 +1,4 @@
-const PAGE = String.raw\`<!doctype html>
+const PAGE = String.raw`<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -80,7 +80,7 @@ $("newchat").addEventListener("click",()=>{if(busy)return;conversationId="";loca
 bootstrap().then(()=>setState("Ready")).catch(error=>setState(error.message));
 </script>
 </body>
-</html>\`;
+</html>`;
 export function publicHome(): Response {
   return new Response(PAGE, {
     status: 200,
