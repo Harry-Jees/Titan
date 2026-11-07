@@ -1,38 +1,22 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { complete } from "../src/model";
 
-afterEach(() => vi.unstubAllGlobals());
+describe("Titan local-only inference boundary", () => {
+  it("never calls Workers AI or a hosted model provider", async () => {
+    let calls = 0;
+    const env = {
+      AI: { run: async () => { calls++; return { response: "should never run" }; } },
+      TITAN_API_BASE: "https://provider.example/v1",
+      TITAN_API_KEY: "test-only-key",
+      TITAN_MODEL: "remote-model"
+    } as any;
+    await expect(complete(env, [{ role: "user", content: "hello" }]))
+      .rejects.toThrow("No cloud model was called");
+    expect(calls).toBe(0);
+  });
 
-function env(overrides: Record<string, unknown> = {}) {
-  return {
-    AI: { run: vi.fn(async () => ({ response: "fallback answer" })) },
-    TITAN_API_BASE: "https://provider.example/v1",
-    TITAN_API_KEY: "test-key-not-real",
-    TITAN_MODEL: "test-primary",
-    TITAN_FALLBACK_MODEL: "test-fallback",
-    ...overrides
-  } as any;
-}
-
-describe("model routing", () => {
-  it("uses configured primary on success", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: "primary answer" } }] }), { status: 200 })));
-    expect(await complete(env(), [{ role: "user", content: "hello" }])).toEqual({ text: "primary answer", model: "test-primary" });
-  });
-  it("fails over on retryable provider errors", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("unavailable", { status: 503 })));
-    const e = env();
-    expect(await complete(e, [{ role: "user", content: "hello" }])).toEqual({ text: "fallback answer", model: "test-fallback" });
-    expect(e.AI.run).toHaveBeenCalledOnce();
-  });
-  it("does not mask invalid credentials", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("unauthorized", { status: 401 })));
-    const e = env();
-    await expect(complete(e, [{ role: "user", content: "hello" }])).rejects.toThrow("returned 401");
-    expect(e.AI.run).not.toHaveBeenCalled();
-  });
-  it("uses Workers AI when no primary is configured", async () => {
-    const e = env({ TITAN_API_BASE: undefined, TITAN_API_KEY: undefined, TITAN_MODEL: undefined });
-    expect((await complete(e, [{ role: "user", content: "hello" }])).model).toBe("test-fallback");
+  it("fails closed even when no local model runtime is configured", async () => {
+    await expect(complete({} as any, [{ role: "user", content: "hello" }]))
+      .rejects.toThrow("Titan's own local model is not connected yet");
   });
 });
