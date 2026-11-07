@@ -12,6 +12,7 @@ MAX_ROWS = max(1, min(10000, int(os.environ.get("TITAN_MAX_TRAIN_ROWS", "1000"))
 EPOCHS = max(1, min(3, int(os.environ.get("TITAN_EPOCHS", "1"))))
 SEED = max(0, min(2**31 - 1, int(os.environ.get("TITAN_SEED", "42"))))
 REQUIRE_SOURCE_GROUNDING = os.environ.get("TITAN_REQUIRE_SOURCE_GROUNDING", "true").lower() not in {"0", "false", "no"}
+ALLOW_USER_CONVERSATION_DATA = os.environ.get("TITAN_ALLOW_USER_CONVERSATION_DATA", "false").lower() in {"1", "true", "yes"}
 SECRET_PATTERNS = [
     re.compile(r"(?i)api[_ -]?key\s*[:=]\s*\S{12,}"),
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----", re.I),
@@ -64,12 +65,19 @@ def validate_training_rows(rows: list[dict[str, Any]], heldout: list[dict[str, A
         if key in seen: rejected["duplicate"]+=1; continue
         if any(pattern.search(instruction+"\n"+response) for pattern in SECRET_PATTERNS): rejected["secret_like"]+=1; continue
         if REQUIRE_SOURCE_GROUNDING:
-            source = str(row.get("source_url", "")).strip()
-            quote = str(row.get("supporting_quote", "")).strip()
-            normalized_quote = re.sub(r"\s+", " ", quote).strip().casefold()
-            normalized_response = re.sub(r"\s+", " ", response).strip().casefold()
-            if not is_valid_source_url(source) or len(quote)<12 or normalized_quote not in normalized_response:
-                rejected["ungrounded"]+=1; continue
+            source_type = str(row.get("source_type", "public_source"))
+            if source_type == "user_conversation":
+                if not ALLOW_USER_CONVERSATION_DATA or row.get("consent") is not True:
+                    rejected["ungrounded"] += 1
+                    continue
+            else:
+                source = str(row.get("source_url", "")).strip()
+                quote = str(row.get("supporting_quote", "")).strip()
+                normalized_quote = re.sub(r"\s+", " ", quote).strip().casefold()
+                normalized_response = re.sub(r"\s+", " ", response).strip().casefold()
+                if not is_valid_source_url(source) or len(quote) < 12 or normalized_quote not in normalized_response:
+                    rejected["ungrounded"] += 1
+                    continue
         seen.add(key); accepted.append({**row,"instruction":instruction,"response":response})
         if len(accepted)>=MAX_ROWS: break
     print(json.dumps({"input_rows":len(rows),"accepted_rows":len(accepted),"rejected":rejected},sort_keys=True))
