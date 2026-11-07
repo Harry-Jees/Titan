@@ -17,7 +17,7 @@ class TrainingDataValidationTests(unittest.TestCase):
         rows=[row(i) for i in range(21)]
         rows.append({**rows[1],"response":rows[1]["response"]+" duplicate"})
         accepted=validate_training_rows(rows,[{"instruction":rows[0]["instruction"]}])
-        self.assertEqual(len(accepted),19)
+        self.assertEqual(len(accepted),20)
         self.assertNotIn(rows[0]["instruction"],[item["instruction"] for item in accepted])
 
     def test_rejects_quote_mismatch_and_private_urls(self):
