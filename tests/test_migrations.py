@@ -23,6 +23,8 @@ class MigrationTests(unittest.TestCase):
                     "training_preferences", "training_examples", "training_runs"}
         actual = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         self.assertTrue(expected.issubset(actual))
+        db.execute("INSERT INTO training_preferences(user_id) VALUES(?)", ("new-user",))
+        self.assertEqual(db.execute("SELECT enabled FROM training_preferences WHERE user_id=?", ("new-user",)).fetchone(), (0,))
         columns = {row[1] for row in db.execute("PRAGMA table_info(memories)")}
         self.assertTrue({"user_id", "updated_at"}.issubset(columns))
         db.close()
