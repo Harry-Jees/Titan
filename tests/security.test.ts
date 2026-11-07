@@ -10,6 +10,7 @@ describe("security helpers", () => {
   it("returns no-store JSON", async () => {
     const response = json({ ok: true });
     expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
     expect(await response.json()).toEqual({ ok: true });
   });
   it("derives separate namespaces from bearer tokens", async () => {
