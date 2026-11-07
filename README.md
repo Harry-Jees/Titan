@@ -1,49 +1,75 @@
 # Titan — personal autonomous AI agent
 
-Titan is a separate, cloud-first personal agent. This repository is the portable Cloudflare Worker foundation for chat, user-scoped memory, persistent conversations, source-attributed knowledge retrieval, model fallback, evaluation, and bounded self-building.
+Titan is a separate, cloud-first personal agent. This repository contains a portable Cloudflare Workers foundation for chat, persistent memory, API tools, opt-in conversation curation, source-attributed knowledge, research automation, evaluation and bounded self-building.
 
-**Safety boundary:** this is a development foundation, not a deployed replacement for the existing Titan Cloudflare services. No live Worker, D1 database, credentials, schedule, model weights, or paid compute are changed by this repository work.
+**Safety boundary:** this is a development repository, not a deployed replacement for the existing live Titan services. No live Worker, D1 database, credential, schedule, model weight or paid compute resource is changed by this work.
 
 ## Stack
 - Cloudflare Workers + TypeScript
-- Cloudflare D1 for memory, conversations, knowledge and evaluation records
-- Configurable OpenAI-compatible model provider with Workers AI fallback
-- Scheduled data curation and candidate LoRA evaluation (no automatic model promotion)
-- Bounded self-build workflow that opens a PR for human review
+- Cloudflare D1 for memory, conversations, knowledge, tool registry, approvals, audit, quotas and training records
+- Configurable OpenAI-compatible inference with Workers AI fallback
+- Robots-aware public research crawler and source-attributed chunking
+- Opt-in conversation curation; candidate LoRA training is separate and manual
+- PR-only self-build workflow; no auto-merge or deployment
 
 ## Local development
 Requirements: Node.js 20+, npm, Python 3.11+.
 
-```bash
-npm install
-python -m pip install -r training/requirements.txt
-npm run typecheck
-npm test
-python -m pytest -q
-```
+    npm install
+    python -m pip install -r training/requirements.txt
+    npm run typecheck
+    npm test
+    python -m pytest -q
 
-Apply SQL migrations 0001 through 0004 in order to a **development** D1 database. Do not run them against the live Titan database until backed up and reviewed.
+Apply migrations 0001 through 0006 in numeric order to a **development** D1 database. The schemas are aligned with the current live Titan D1 table shapes, but must still be applied to a staging copy first. Do not run them against the live database from this repository.
 
 ## Worker configuration
-Required bindings: `DB` (D1) and `AI` (Workers AI). Optional secrets: `TITAN_ADMIN_TOKEN`, `TITAN_API_BASE`, `TITAN_API_KEY`, `TITAN_MODEL`, and `TITAN_AUTH_MAP_B64`. Keep secrets out of source control. The fallback model is `@cf/zai-org/glm-4.7-flash`; availability and cost depend on provider/plan and are not guaranteed free.
+Main Worker: wrangler.toml, entry src/index.ts.
+
+Separate opt-in curation Worker: wrangler.training.toml, entry src/training-pipeline.ts, cron 30 3 * * * (09:00 IST).
+
+Both configs contain a placeholder D1 database ID. Replace it only with a development database ID before local testing or deployment.
+
+Required bindings: DB (D1) and AI (Workers AI).
+
+Optional secrets/vars:
+- TITAN_ADMIN_TOKEN
+- TITAN_API_BASE, TITAN_API_KEY, TITAN_MODEL
+- TITAN_AUTH_MAP_B64 (compatibility mapping; secret only)
+- TITAN_VAULT_KEY_B64 (32-byte AES-GCM key for provisioned API credentials)
+- TITAN_TOOL_REGISTRY (server-managed tool definitions)
+- TITAN_DAILY_REQUEST_LIMIT (default 200 per user per UTC day)
+- TITAN_TRAINING_CRON_SECRET (optional HTTP trigger secret for the training worker)
+
+Keep secrets out of source control. The fallback model is @cf/zai-org/glm-4.7-flash; availability and cost depend on provider and plan and are not guaranteed free.
 
 ## API
-- `GET /health`
-- `POST /chat` — `{ "message": "...", "conversationId": "optional-id" }`
-- `GET /conversations`, `DELETE /conversations?id=...`
-- `GET /memory?q=...`, `POST /memory`
-- `POST /knowledge`, `GET /knowledge?q=...` (admin token)
-- `POST /evaluate` (admin token)
+- GET /health
+- POST /chat — message and optional conversationId
+- GET /conversations, DELETE /conversations?id=...
+- GET /memory?q=..., POST /memory
+- GET /tools — list registered tools without exposing credentials
+- POST /tools/provision — validate and save a per-user tool; credentials are AES-GCM encrypted
+- DELETE /tools?name=...
+- GET /training/preferences, POST /training/preferences — explicit user opt-in/out
+- POST /knowledge, GET /knowledge?q=... (admin token)
+- POST /evaluate (admin token)
 
-Conversation history is loaded server-side and scoped to the bearer namespace; client-supplied history is ignored. This is capability-token isolation, not a complete public account-authentication system. A public multi-user deployment still needs verified authentication, rate limits, abuse controls and key rotation.
+Conversation history is loaded server-side and scoped to the authenticated bearer namespace; client-supplied history is ignored. This is capability-token isolation, not a complete public account-authentication system. A public multi-user deployment still needs verified authentication, rate limits, abuse controls and key rotation.
 
-## Learning and self-building
-The daily learning workflow is scheduled for 06:30 UTC (12:00 PM IST), subject to GitHub Actions delays. It can crawl configured public sources, curate grounded examples, attempt candidate LoRA training and evaluate candidates against a held-out suite. Provider calls can incur charges; configure them only with an approved budget. Crawling must respect source terms, robots rules, copyright, privacy and applicable law. No adapter is auto-promoted, merged or deployed. Apply the training worker config separately and only to a development D1 database until the live schema has been staged and reviewed.
+Registered GET tools can be selected by the model and run with strict parameter allowlists. POST tools create a 10-minute pending approval and are not sent until the matching confirmation ID is returned as confirmToolCall. Tool calls are audited. External tool metadata and responses are treated as untrusted data.
 
-The self-build workflow is constrained and PR-only. Review every proposed change.
+## Research and learning schedules
+- **12:00 PM IST (06:30 UTC):** GitHub Actions daily research workflow. It crawls public sitemaps with robots-aware access, host pacing and bounded downloads, plans coverage gaps, creates source-attributed chunks and uploads a cycle artifact. It does not call a teacher model or fine-tune.
+- **09:00 AM IST (03:30 UTC):** separate D1 curation worker. It processes only conversations from users who explicitly enable training_preferences, screens sensitive data, grades at most eight pairs and stores candidates. It does not update model weights.
+- **Candidate LoRA training:** manual and separate. Teacher API calls may incur costs; GPU availability and model downloads are not guaranteed free. Candidates must pass held-out capability and safety checks and require human review. No adapter is automatically promoted, merged or deployed.
+
+Crawling must respect source terms, robots rules, copyright, privacy and applicable law.
+
+## Self-building
+The self-build workflow is manual and bounded. It only proposes changes in approved source/test/docs paths, runs checks and opens a PR for human review. It cannot edit workflows, dependencies, secrets, deployment configuration or migrations, and never auto-merges.
 
 ## Live integration boundary
-The existing live Titan services have additional capabilities including API-tool registry, explicit tool-call approval, encrypted credentials, audit records and usage limits. These must be ported and tested before this foundation can replace or integrate with the live API. See [development status](docs/DEVELOPMENT-STATUS.md), [live integration](docs/LIVE-INTEGRATION.md), and [roadmap](docs/ROADMAP.md).
+This repository ports the live tool registry, credential encryption, explicit POST approval, tool audit, daily quota and opt-in training curation patterns. Before replacing or integrating with the live API, port and test remaining authentication hardening, key rotation, rate limiting, and any live-only business logic. No production deployment or live database migration has been performed.
 
-## Status
-Work is on `development/titan-foundation`. The starter's Python suite currently passes locally (27 tests). TypeScript/Vitest verification still needs a clean dependency install. No model training, production deployment or live database migration has been performed.
+See docs/DEVELOPMENT-STATUS.md, docs/LIVE-INTEGRATION.md and docs/ROADMAP.md.
