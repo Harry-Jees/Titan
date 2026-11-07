@@ -3,7 +3,7 @@
 ## Implemented on development/titan-foundation
 - Cloudflare Worker API for chat, conversations, memory, knowledge, evaluation, API-tool provisioning and per-user training preferences.
 - Public browser chat interface served from the Worker root; anonymous session bootstrap, random per-visitor namespace, hashed session capabilities, 30-day expiry, per-session and per-IP daily request caps, and additive D1 initialization for public sessions and knowledge retrieval.
-- Configurable OpenAI-compatible inference with bounded timeout and Workers AI fallback.
+- **Hosted inference disabled:** Workers AI binding, fallback model, and hosted-provider routing removed. Chat fails closed until Titan's own local model runtime is connected; no Cloudflare AI neurons are consumed by Titan inference.
 - Bearer-token namespace isolation and compatibility with the existing Titan auth map.
 - Server-side conversation history; client-supplied history is ignored.
 - Additive D1 migrations for memory, knowledge, conversations, encrypted API tools, pending approvals, audit, daily quotas and training records.
@@ -26,13 +26,14 @@
 - No GPU training or teacher API call was run.
 
 ## Not done
-- No model weights were trained or updated; no Hugging Face job was launched.
-- Public access is implemented on the development branch but has not been deployed; no Cloudflare Worker, D1 database, secret, schedule or deployment was changed.
+- No model weights have been trained or updated yet; no Hugging Face job was launched. Local-only inference is now enforced in code and tested.
+- The public Worker remains deployed, but the new local-only inference changes are on the development branch and await its automatic build/deployment. The existing deployed version may still have its AI binding until that build finishes.
 - No live D1 migration or production chat/tool test was run.
 - Teacher-generated examples now require the exact source quote to appear in both the source excerpt and response, matching the LoRA validator. The held-out scorer no longer rejects correct uncertainty statements as refusals.
 - Production authentication hardening, key rotation, advanced rate limiting and live end-to-end validation remain outstanding.
 
 ## Next engineering milestones
+0. Build and package Titan's own small local model, then run inference in the visitor's browser/device so the public service never pays for inference.
 1. Verify the new tool-host allowlist, atomic approval consumption and fingerprint migration in CI.
 2. Add route-level integration tests with disposable D1 and mocked external APIs.
 3. Review key rotation and token lifecycle against the live gateway.
