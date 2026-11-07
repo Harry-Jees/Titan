@@ -33,6 +33,8 @@ async function ensurePublicTables(env: Env): Promise<void> {
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS public_sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at TEXT NOT NULL)").run();
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS public_session_issuance (ip_hash TEXT NOT NULL, day TEXT NOT NULL, sessions INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (ip_hash, day))").run();
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS public_ip_usage (ip_hash TEXT NOT NULL, day TEXT NOT NULL, requests INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (ip_hash, day))").run();
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS knowledge_chunks (id TEXT PRIMARY KEY, source_url TEXT NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL, content_hash TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+  await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_created ON knowledge_chunks(created_at DESC)").run();
 }
 
 /** Create an anonymous, isolated visitor session without requiring account registration. */
