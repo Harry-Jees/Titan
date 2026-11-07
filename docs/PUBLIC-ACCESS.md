@@ -1,5 +1,7 @@
 # Public access
 
+**Live public preview:** https://titan-ai-core.harryjees.workers.dev/
+
 Titan's API supports anonymous public visitors without requiring account registration or a manually supplied token.
 
 ## Session bootstrap
