@@ -2,6 +2,7 @@
 
 ## Implemented on development/titan-foundation
 - Cloudflare Worker API for chat, conversations, memory, knowledge, evaluation, API-tool provisioning and per-user training preferences.
+- Public browser chat interface served from the Worker root; anonymous session bootstrap, random per-visitor namespace, hashed session capabilities, 30-day expiry, per-session and per-IP daily request caps, and additive D1 initialization for public sessions and knowledge retrieval.
 - Configurable OpenAI-compatible inference with bounded timeout and Workers AI fallback.
 - Bearer-token namespace isolation and compatibility with the existing Titan auth map.
 - Server-side conversation history; client-supplied history is ignored.
@@ -27,7 +28,7 @@
 
 ## Not done
 - No model weights were trained or updated; no Hugging Face job was launched.
-- No Cloudflare Worker, D1 database, secret, schedule or deployment was changed.
+- Public access is implemented on the development branch but has not been deployed; no Cloudflare Worker, D1 database, secret, schedule or deployment was changed.
 - No live D1 migration or production chat/tool test was run.
 - Teacher-generated examples now require the exact source quote to appear in both the source excerpt and response, matching the LoRA validator. The held-out scorer no longer rejects correct uncertainty statements as refusals.
 - Production authentication hardening, key rotation, advanced rate limiting and live end-to-end validation remain outstanding.
