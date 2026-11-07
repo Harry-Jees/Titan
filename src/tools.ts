@@ -202,8 +202,22 @@ export async function executeTool(env: Env, userId: string, name: string, input:
   try {
     const response = await fetch(url, { method: tool.method, headers, body, redirect: "error", signal: AbortSignal.timeout(8000) });
     if (Number(response.headers.get("content-length") || 0) > 30000) return { ok: false, error: "Response too large" };
-    const raw = await response.text();
-    if (new TextEncoder().encode(raw).length > 30000) return { ok: false, error: "Response too large" };
+    const reader = response.body?.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    if (reader) {
+      while (true) {
+        const part = await reader.read();
+        if (part.done) break;
+        total += part.value.byteLength;
+        if (total > 30000) { await reader.cancel(); return { ok: false, error: "Response too large" }; }
+        chunks.push(part.value);
+      }
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    const raw = new TextDecoder().decode(bytes);
     let data: unknown;
     try { data = JSON.parse(raw); } catch { data = raw.slice(0, 30000); }
     if (!response.ok) return { ok: false, error: "External API returned status " + response.status };
