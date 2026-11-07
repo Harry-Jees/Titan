@@ -79,11 +79,12 @@ export async function runTrainingCycle(env: Env) {
       "SELECT c.id,c.user_id,c.conversation_id,c.role,c.content,c.created_at FROM conversations c " +
       "INNER JOIN training_preferences p ON p.user_id=c.user_id AND p.enabled=1 " +
       "WHERE c.created_at >= datetime('now','-14 days') AND c.role IN ('user','assistant') " +
-      "ORDER BY c.user_id,c.conversation_id,c.created_at ASC LIMIT ?"
+      "ORDER BY c.user_id,c.conversation_id,c.created_at ASC,c.rowid ASC LIMIT ?"
     ).bind(MAX_SCAN).all<ConversationRow>();
     const conversations = rows.results || [];
-    scanned = conversations.length;
-    const candidates = pairConversationRows(conversations).slice(0, MAX_PAIRS);
+    const allPairs = pairConversationRows(conversations);
+    scanned = allPairs.length;
+    const candidates = allPairs.slice(0, MAX_PAIRS);
     const insertStatements: D1PreparedStatement[] = [];
     for (const pair of candidates) {
       if (containsSensitiveContent(pair.user.content) || containsSensitiveContent(pair.assistant.content) ||
