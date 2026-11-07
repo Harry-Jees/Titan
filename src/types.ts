@@ -11,6 +11,8 @@ export interface Env {
   TITAN_TOOL_REGISTRY?: string;
   TITAN_VAULT_KEY_B64?: string;
   TITAN_DAILY_REQUEST_LIMIT?: string;
+  TITAN_TRAINING_MODEL?: string;
+  TITAN_TRAINING_CRON_SECRET?: string;
   TITAN_KNOWLEDGE_CONTEXT_LIMIT?: string;
 }
 export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
