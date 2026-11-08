@@ -29,6 +29,26 @@ class TrainingDataValidationTests(unittest.TestCase):
         self.assertEqual(len(accepted), 20)
         self.assertNotIn(rows[0]["instruction"], [item["instruction"] for item in accepted])
 
+    def test_deterministic_row_cap_is_independent_of_input_order(self):
+        rows = [row(i) for i in range(25)]
+        first = validate_training_rows(rows, [], max_rows=20, seed=17)
+        second = validate_training_rows(list(reversed(rows)), [], max_rows=20, seed=17)
+        self.assertEqual(
+            [item["instruction"] for item in first],
+            [item["instruction"] for item in second],
+        )
+        self.assertEqual(len(first), 20)
+
+    def test_rejects_exact_heldout_source_excerpt_overlap(self):
+        rows = [row(i) for i in range(21)]
+        heldout = [{
+            "instruction": "A different held-out instruction for Titan evaluation.",
+            "source_excerpt_sha256": rows[0]["source_excerpt_sha256"],
+        }]
+        accepted = validate_training_rows(rows, heldout)
+        self.assertEqual(len(accepted), 20)
+        self.assertNotIn(rows[0]["instruction"], [item["instruction"] for item in accepted])
+
     def test_rejects_quote_mismatch_and_private_urls(self):
         rows = [row(i) for i in range(20)]
         rows[0] = {**rows[0], "supporting_quote": "This quote is not in the answer at all"}

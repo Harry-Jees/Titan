@@ -24,6 +24,12 @@
 - Evaluation reports include the held-out dataset SHA-256. Base and candidate models are loaded separately so adapter attachment cannot mutate the baseline model.
 - CI now simulates the observed live D1 table shapes in an isolated SQLite database, checking that existing memory/conversation rows survive and the pending-approval fingerprint column is additive.
 
+## Training provenance hardening added on 2026-11-08
+- The default Qwen2.5-0.5B-Instruct base is pinned to an immutable Hugging Face commit; custom base models require an explicit 40-character commit SHA.
+- Training row selection is deterministic and independent of input JSONL order, with exact held-out source-excerpt hash overlap rejection.
+- Candidate manifests now record library versions, trainer configuration/metrics, selected prompt fingerprints, data hashes and adapter files. Evaluation refuses missing/mismatched manifests or adapter artifacts.
+- Promotion thresholds reject NaN, infinity and values outside 0–1. This is validation-only; no training or model promotion was run.
+
 ## Verification
 - Original portable starter Python suite passed locally (27 tests).
 - Public-access branch head `fc505245e2b78ab4a367240a0418e133fa2c873e` passed GitHub Actions run #149 (Python tests, TypeScript strict typecheck, Vitest, Wrangler dry-run bundle and short-lived deployment artifact).

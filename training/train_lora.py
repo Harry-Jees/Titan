@@ -1,9 +1,14 @@
 """Bounded LoRA self-distillation. Produces a candidate adapter, never a deployed model."""
 from __future__ import annotations
-import hashlib, ipaddress, json, os, re
+import hashlib, ipaddress, json, os, random, re
 from pathlib import Path
 from urllib.parse import urlparse
 from typing import Any
+
+try:
+    from training.provenance import installed_versions, resolve_base_model_revision
+except ModuleNotFoundError:  # Support direct execution: python training/train_lora.py
+    from provenance import installed_versions, resolve_base_model_revision
 
 DATA = Path(os.environ.get("TITAN_TRAIN_DATA", "training/curated.jsonl"))
 OUT = Path(os.environ.get("TITAN_ADAPTER_OUT", "artifacts/titan-lora"))
@@ -66,14 +71,32 @@ def is_valid_source_url(source: str) -> bool:
     except ValueError:
         return False
 
-def validate_training_rows(rows: list[dict[str, Any]], heldout: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def validate_training_rows(
+    rows: list[dict[str, Any]],
+    heldout: list[dict[str, Any]],
+    *,
+    max_rows: int = MAX_ROWS,
+    seed: int = SEED,
+) -> list[dict[str, Any]]:
+    if not isinstance(max_rows, int) or not 20 <= max_rows <= 10000:
+        raise SystemExit("max_rows must be between 20 and 10,000.")
+    if not isinstance(seed, int) or not 0 <= seed <= 2**31 - 1:
+        raise SystemExit("seed must be between 0 and 2,147,483,647.")
+
     heldout_instructions = {
         normalize_instruction(str(row.get("instruction", "")))
         for row in heldout if str(row.get("instruction", "")).strip()
     }
+    heldout_excerpt_hashes = {
+        str(row.get("source_excerpt_sha256", "")).strip().lower()
+        for row in heldout if str(row.get("source_excerpt_sha256", "")).strip()
+    }
     accepted: list[dict[str, Any]] = []
     seen: set[str] = set()
-    rejected = {"invalid": 0, "heldout_overlap": 0, "duplicate": 0, "secret_like": 0, "ungrounded": 0}
+    rejected = {
+        "invalid": 0, "heldout_overlap": 0, "heldout_source_overlap": 0,
+        "duplicate": 0, "secret_like": 0, "ungrounded": 0,
+    }
     for row in rows:
         instruction = str(row.get("instruction", "")).strip()
         response = str(row.get("response", "")).strip()
@@ -83,6 +106,10 @@ def validate_training_rows(rows: list[dict[str, Any]], heldout: list[dict[str, A
             continue
         if key in heldout_instructions:
             rejected["heldout_overlap"] += 1
+            continue
+        excerpt_hash = str(row.get("source_excerpt_sha256", "")).strip().lower()
+        if excerpt_hash and excerpt_hash in heldout_excerpt_hashes:
+            rejected["heldout_source_overlap"] += 1
             continue
         if key in seen:
             rejected["duplicate"] += 1
@@ -105,10 +132,16 @@ def validate_training_rows(rows: list[dict[str, Any]], heldout: list[dict[str, A
                 normalized_response = normalize_grounding(response)
                 normalized_excerpt = normalize_grounding(excerpt)
                 excerpt_length = len(excerpt.strip())
-                digest_matches = bool(re.fullmatch(r"[a-f0-9]{64}", excerpt_hash)) and hashlib.sha256(excerpt.encode("utf-8")).hexdigest() == excerpt_hash
-                if (not is_valid_source_url(source) or len(quote) < 12 or excerpt_length < 200 or excerpt_length > 6500
-                        or not digest_matches or normalized_quote not in normalized_excerpt
-                        or normalized_quote not in normalized_response):
+                digest_matches = (
+                    bool(re.fullmatch(r"[a-f0-9]{64}", excerpt_hash))
+                    and hashlib.sha256(excerpt.encode("utf-8")).hexdigest() == excerpt_hash
+                )
+                if (
+                    not is_valid_source_url(source) or len(quote) < 12
+                    or excerpt_length < 200 or excerpt_length > 6500
+                    or not digest_matches or normalized_quote not in normalized_excerpt
+                    or normalized_quote not in normalized_response
+                ):
                     rejected["ungrounded"] += 1
                     continue
             else:
@@ -116,12 +149,19 @@ def validate_training_rows(rows: list[dict[str, Any]], heldout: list[dict[str, A
                 continue
         seen.add(key)
         accepted.append({**row, "instruction": instruction, "response": response})
-        if len(accepted) >= MAX_ROWS:
-            break
-    print(json.dumps({"input_rows": len(rows), "accepted_rows": len(accepted), "rejected": rejected}, sort_keys=True))
-    if len(accepted) < 20:
+
+    # Sort before seeded shuffling so the selected subset is independent of JSONL row order.
+    accepted.sort(key=lambda row: normalize_instruction(row["instruction"]))
+    random.Random(seed).shuffle(accepted)
+    eligible_count = len(accepted)
+    selected = accepted[:max_rows]
+    print(json.dumps({
+        "input_rows": len(rows), "eligible_rows": eligible_count,
+        "accepted_rows": len(selected), "rejected": rejected,
+    }, sort_keys=True))
+    if len(selected) < 20:
         raise SystemExit("Need at least 20 valid, deduplicated, held-out-disjoint examples; refusing to train.")
-    return accepted
+    return selected
 
 def choose_lora_targets(model: Any) -> list[str]:
     import torch
@@ -139,14 +179,17 @@ def main() -> None:
     from peft import LoraConfig
     from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
     from trl import SFTConfig, SFTTrainer
-    base_model_name = os.environ.get("TITAN_BASE_MODEL", "Qwen/Qwen2.5-0.5B-Instruct")
+
+    base_model_name = os.environ.get("TITAN_BASE_MODEL", "Qwen/Qwen2.5-0.5B-Instruct").strip()
+    base_model_revision = resolve_base_model_revision(base_model_name)
     if OUT.exists() and (not OUT.is_dir() or any(OUT.iterdir())):
         raise SystemExit(f"Output path is not an empty directory: {OUT}. Choose a fresh candidate path.")
     rows = validate_training_rows(load_jsonl(DATA), load_jsonl(EVAL_DATA))
     set_seed(SEED)
-    tokenizer = AutoTokenizer.from_pretrained(base_model_name)
+    tokenizer = AutoTokenizer.from_pretrained(base_model_name, revision=base_model_revision)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+
     def format_example(row: dict[str, Any]) -> dict[str, str]:
         messages = [
             {"role": "system", "content": "You are Titan, a reliable AI assistant. Be accurate, helpful, safe, and explicit about uncertainty."},
@@ -154,13 +197,17 @@ def main() -> None:
             {"role": "assistant", "content": row["response"]},
         ]
         return {"text": tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)}
+
     dataset = Dataset.from_list([format_example(row) for row in rows])
-    model = AutoModelForCausalLM.from_pretrained(base_model_name)
+    model = AutoModelForCausalLM.from_pretrained(base_model_name, revision=base_model_revision)
     targets = choose_lora_targets(model)
     has_cuda = torch.cuda.is_available()
     use_bf16 = bool(has_cuda and torch.cuda.is_bf16_supported())
     use_fp16 = bool(has_cuda and not use_bf16)
-    lora = LoraConfig(r=8, lora_alpha=16, lora_dropout=0.05, bias="none", task_type="CAUSAL_LM", target_modules=targets)
+    lora = LoraConfig(
+        r=8, lora_alpha=16, lora_dropout=0.05, bias="none",
+        task_type="CAUSAL_LM", target_modules=targets,
+    )
     args = SFTConfig(
         output_dir=str(OUT), num_train_epochs=EPOCHS, per_device_train_batch_size=1,
         gradient_accumulation_steps=8, learning_rate=2e-4, logging_steps=5,
@@ -168,20 +215,58 @@ def main() -> None:
         dataset_text_field="text", fp16=use_fp16, bf16=use_bf16,
         gradient_checkpointing=has_cuda, seed=SEED, data_seed=SEED,
     )
-    trainer = SFTTrainer(model=model, args=args, train_dataset=dataset, peft_config=lora, processing_class=tokenizer)
-    trainer.train()
+    trainer = SFTTrainer(
+        model=model, args=args, train_dataset=dataset,
+        peft_config=lora, processing_class=tokenizer,
+    )
+    train_result = trainer.train()
     trainer.save_model(str(OUT))
     tokenizer.save_pretrained(str(OUT))
+
+    adapter_config = OUT / "adapter_config.json"
+    adapter_weights = sorted(path.name for path in OUT.glob("adapter_model.*") if path.is_file())
+    if not adapter_config.is_file() or not adapter_weights:
+        raise SystemExit("Training did not produce a PEFT adapter config and adapter weights; refusing to write a candidate manifest.")
+
+    selected_prompt_hashes = sorted(
+        hashlib.sha256(row["instruction"].encode("utf-8")).hexdigest() for row in rows
+    )
+    metrics = getattr(train_result, "metrics", {}) or {}
     manifest = {
-        "base_model": base_model_name, "train_data_sha256": sha256_file(DATA),
-        "heldout_data_sha256": sha256_file(EVAL_DATA), "rows": len(rows), "epochs": EPOCHS,
-        "seed": SEED, "method": "LoRA SFT self-distillation", "target_modules": targets,
-        "accelerator": "cuda" if has_cuda else "cpu", "reviewed_by_human": False,
+        "base_model": base_model_name,
+        "base_model_revision": base_model_revision,
+        "train_data_sha256": sha256_file(DATA),
+        "heldout_data_sha256": sha256_file(EVAL_DATA),
+        "selected_prompt_fingerprints_sha256": hashlib.sha256(
+            "\n".join(selected_prompt_hashes).encode("utf-8")
+        ).hexdigest(),
+        "rows": len(rows),
+        "epochs": EPOCHS,
+        "seed": SEED,
+        "method": "LoRA SFT self-distillation",
+        "target_modules": targets,
+        "accelerator": "cuda" if has_cuda else "cpu",
+        "package_versions": installed_versions(),
+        "training_config": {
+            "max_length": 1024,
+            "per_device_train_batch_size": 1,
+            "gradient_accumulation_steps": 8,
+            "learning_rate": 2e-4,
+            "lora_rank": 8,
+            "lora_alpha": 16,
+            "lora_dropout": 0.05,
+        },
+        "train_metrics": {
+            key: value for key, value in metrics.items()
+            if isinstance(value, (int, float)) and not isinstance(value, bool)
+        },
+        "adapter_files": adapter_weights,
+        "reviewed_by_human": False,
         "source_grounded": REQUIRE_SOURCE_GROUNDING,
         "promotion": "candidate-only; requires held-out capability and safety gate",
     }
     (OUT / "titan_training_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    print(f"Saved candidate adapter to {OUT}. Evaluate against the base model before any promotion.")
+    print(f"Saved candidate adapter to {OUT}. Evaluate against the pinned base model before any promotion.")
 
 if __name__ == "__main__":
     main()

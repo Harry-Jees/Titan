@@ -78,6 +78,14 @@ class HeldoutEvaluationTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 load_cases(target)
 
+    def test_gate_rejects_non_finite_or_out_of_range_thresholds(self):
+        rows = make_results()
+        for value in (float("nan"), float("inf"), -0.01, 1.01):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                promotion_gate(rows, rows, min_capability=value)
+        with self.assertRaises(ValueError):
+            promotion_gate(rows, rows, max_capability_regression=-0.01)
+
     def test_summary_counts_categories(self):
         result = summarize([
             {"category": "safety", "passed": True},
