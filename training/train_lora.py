@@ -99,13 +99,14 @@ def validate_training_rows(rows: list[dict[str, Any]], heldout: list[dict[str, A
             elif source_type == "public_source":
                 source = str(row.get("source_url", "")).strip()
                 quote = str(row.get("supporting_quote", "")).strip()
-                excerpt = str(row.get("source_excerpt", "")).strip()
+                excerpt = str(row.get("source_excerpt", ""))
                 excerpt_hash = str(row.get("source_excerpt_sha256", "")).strip().lower()
                 normalized_quote = normalize_grounding(quote)
                 normalized_response = normalize_grounding(response)
                 normalized_excerpt = normalize_grounding(excerpt)
+                excerpt_length = len(excerpt.strip())
                 digest_matches = bool(re.fullmatch(r"[a-f0-9]{64}", excerpt_hash)) and hashlib.sha256(excerpt.encode("utf-8")).hexdigest() == excerpt_hash
-                if (not is_valid_source_url(source) or len(quote) < 12 or len(excerpt) < 200 or len(excerpt) > 6500
+                if (not is_valid_source_url(source) or len(quote) < 12 or excerpt_length < 200 or excerpt_length > 6500
                         or not digest_matches or normalized_quote not in normalized_excerpt
                         or normalized_quote not in normalized_response):
                     rejected["ungrounded"] += 1
