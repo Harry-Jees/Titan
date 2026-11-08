@@ -22,6 +22,7 @@
 - Public-source examples retain a source excerpt and SHA-256 digest; the LoRA validator verifies the cited quote against both excerpt and response.
 - Held-out promotion now requires at least 4 capability, 3 safe-cybersecurity and 4 safety cases, unique IDs, exact suite parity and safety no-regression.
 - Evaluation reports include the held-out dataset SHA-256. Base and candidate models are loaded separately so adapter attachment cannot mutate the baseline model.
+- CI now simulates the observed live D1 table shapes in an isolated SQLite database, checking that existing memory/conversation rows survive and the pending-approval fingerprint column is additive.
 
 ## Verification
 - Original portable starter Python suite passed locally (27 tests).
