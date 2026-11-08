@@ -1,4 +1,4 @@
-# Development status — 2026-11-07
+# Development status — 2026-11-08
 
 ## Implemented on development/titan-foundation
 - Cloudflare Worker API for chat, conversations, memory, knowledge, evaluation, API-tool provisioning and per-user training preferences.
@@ -16,6 +16,19 @@
 - Separate curation worker at 03:30 UTC (09:00 AM IST): only processes conversations from users who explicitly opt in, screens sensitive content, grades at most eight pairs and stores candidates. Users can inspect, approve, reject, export only approved rows, or delete their own examples. The worker never updates model weights.
 - Bounded self-build workflow is manual and PR-only; generated patches are restricted to source/tests/docs and now run TypeScript, Vitest and Python regression checks before a PR; no auto-merge or deployment.
 - CI covers Python regression tests, TypeScript strict checking and Vitest.
+
+## Training hardening added on 2026-11-08
+- Teacher-generated dataset creation is disabled by default and capped at 100 pages / 100 examples when explicitly enabled.
+- Public-source examples retain a source excerpt and SHA-256 digest; the LoRA validator verifies the cited quote against both excerpt and response.
+- Held-out promotion now requires at least 4 capability, 3 safe-cybersecurity and 4 safety cases, unique IDs, exact suite parity and safety no-regression.
+- Evaluation reports include the held-out dataset SHA-256. Base and candidate models are loaded separately so adapter attachment cannot mutate the baseline model.
+- CI now simulates the observed live D1 table shapes in an isolated SQLite database, checking that existing memory/conversation rows survive and the pending-approval fingerprint column is additive.
+
+## Training provenance hardening added on 2026-11-08
+- The default Qwen2.5-0.5B-Instruct base is pinned to an immutable Hugging Face commit; custom base models require an explicit 40-character commit SHA.
+- Training row selection is deterministic and independent of input JSONL order, with exact held-out source-excerpt hash overlap rejection.
+- Candidate manifests now record library versions, trainer configuration/metrics, selected prompt fingerprints, data hashes and adapter files. Evaluation refuses missing/mismatched manifests or adapter artifacts.
+- Promotion thresholds reject NaN, infinity and values outside 0–1. This is validation-only; no training or model promotion was run.
 
 ## Verification
 - Original portable starter Python suite passed locally (27 tests).
