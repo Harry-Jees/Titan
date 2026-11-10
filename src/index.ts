@@ -71,7 +71,7 @@ export default {
         return json({ error: "Method not allowed" }, 405);
       }
 
-      const experienceReplayMatch = url.pathname.match(/^\\/experiences\\/episodes\\/([A-Za-z0-9_-]{8,80})\\/replay$/);
+      const experienceReplayMatch = url.pathname.match(/^\/experiences\/episodes\/([A-Za-z0-9_-]{8,80})\/replay$/);
       if (experienceReplayMatch) {
         if (request.method !== "GET") return json({ error: "Method not allowed" }, 405);
         const scope = await memoryScope(request, env);
