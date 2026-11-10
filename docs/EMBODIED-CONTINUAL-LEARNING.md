@@ -15,8 +15,11 @@ the implementation/digital-experience-loop-20261111 branch:
 - Event payload validation with bounded fields, finite numeric values, timestamps,
   source attribution, and event-specific schemas.
 - Database triggers that reject updates and deletes to experience events.
-- Authenticated API routes to create/list episodes, append events, and retrieve
-  an episode's event history, with per-user daily write quotas.
+- Authenticated API routes to create/list episodes, append events, retrieve
+  event history, and replay an episode as a deterministic read-only projection,
+  with per-user daily write quotas.
+- Replay checks contiguous sequence numbers, schema versions, action proposal/
+  approval/outcome references, and episode closure; it never executes actions.
 - A standard-library-only deterministic toy balance environment in
   training/experience_lab.py.
 - Pure transition prediction, measured outcomes, absolute-error scoring, and
@@ -30,8 +33,9 @@ is additive and has not been applied to any live D1 database. No model weights
 have been trained or changed.
 
 Still outstanding: route-level tests against disposable D1, persistence
-verification across process restart, replay/held-out isolation, and a genuinely
-learned policy or world model. The fixed PD controller is a deterministic
+verification across process restart, held-out evaluation isolation, and a
+genuinely learned policy or world model. Replay is a deterministic projection,
+not a learned policy or a substitute for restart testing. The fixed PD controller is a deterministic
 baseline, not a learned agent.
 
 ## 1. Meaning of a "real entity"
