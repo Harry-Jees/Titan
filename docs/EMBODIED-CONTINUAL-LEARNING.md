@@ -1,8 +1,32 @@
 # Titan: embodied continual-learning architecture
 
-**Status:** architectural contract; implementation must be staged behind simulation and safety gates.
+**Status:** architectural contract; Stage A persistence is being implemented behind simulation and safety gates. No physical actions are enabled.
 
 Titan is not intended to be only a chat model. It is a persistent autonomous agent that learns from interaction with its environment and can operate through a digital or physical body. A language model may be one reasoning component; it is not the whole intelligence.
+
+## Stage A implementation status — 2026-11-11
+
+The first digital experience-memory foundation is now implemented on the
+\`implementation/digital-experience-loop-20261111\` branch:
+
+- User-scoped episode metadata with explicit \`simulation\` or \`read_only\` mode.
+- A versioned, ordered D1 event log for observations, predictions, proposed
+  actions, validation decisions, outcomes, diagnoses, belief updates, and episode end.
+- Event payload validation with bounded fields, finite numeric values, timestamps,
+  source attribution, and event-specific schemas.
+- Database triggers that reject updates and deletes to experience events.
+- Authenticated API routes to create/list episodes, append events, and retrieve
+  an episode's event history.
+- Per-user daily quota checks on episode and event writes.
+
+The API records proposed actions; it does not execute tools, actuators, or
+physical actions. The database migration is additive and has not been applied
+to any live D1 database.
+
+Still outstanding for Stage A: a deterministic toy environment, a baseline
+learner, prediction-versus-outcome scoring, explicit failure classification
+from measured error, replay/held-out isolation, and restart/recovery tests.
+No model weights have been trained or changed.
 
 ## 1. Meaning of a "real entity"
 
@@ -128,4 +152,4 @@ Build Stage A before buying or connecting robot hardware:
 5. Test persistence across process restart and verify that replay cannot silently contaminate held-out evaluation.
 6. Expose no physical actuator by default.
 
-This gives Titan a real, testable learning cycle now, while keeping the architecture portable to a future robot body.
+The current branch establishes the event storage/API foundation only. The toy environment, learner, scoring, and replay-isolation checks remain the next implementation work.
