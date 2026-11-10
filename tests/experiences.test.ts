@@ -219,6 +219,13 @@ describe("experience event replay", () => {
     expect(afterEnd.ok).toBe(false);
   });
 
+  it("refuses to replay more than the bounded event window", () => {
+    const events = Array.from({ length: 201 }, (_, index) =>
+      event(index + 1, "observation", { source: "sensor", state: { angle: 0.1 } }),
+    );
+    expect(replayExperienceEvents(events, "simulation").ok).toBe(false);
+  });
+
   it("rejects outcomes without a preceding approved action", () => {
     const result = replayExperienceEvents([
       event(1, "action_proposed", {
