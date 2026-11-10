@@ -13,9 +13,10 @@ Implemented on the implementation/digital-experience-loop-20261111 branch:
 - Added a standard-library-only deterministic toy balance simulator with pure prediction and measured transition output.
 - Added absolute prediction-error scoring, evidence-priority failure classification, and a fixed PD baseline.
 - Compared the fixed controller with a no-op on five deterministic held-out initial states; added a JSONL episode generator compatible with the Stage A event payloads.
-- Added Vitest event-schema tests, Python simulation tests, and SQLite migration tests.
+- Added deterministic read-only event replay with sequence, schema-version, action-reference, and closure checks; replay never executes proposed actions.
+- Added Vitest replay tests alongside event-schema tests, Python simulation tests, and SQLite migration tests.
 
-The simulator is a fixed baseline, not a learned policy. Route-level disposable-D1 tests, restart/recovery, replay/held-out isolation, and a learned policy/world model remain outstanding. The migration has not been applied to live D1; no model training or external actions were run.
+The simulator is a fixed baseline, not a learned policy. Route-level disposable-D1 tests, persistence verification across process restart, held-out evaluation isolation, and a learned policy/world model remain outstanding. The migration has not been applied to live D1; no model training or external actions were run.
 
 ## Implemented on development/titan-foundation
 - Cloudflare Worker API for chat, conversations, memory, knowledge, evaluation, API-tool provisioning and per-user training preferences.
