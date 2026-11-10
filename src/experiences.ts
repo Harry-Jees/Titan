@@ -483,6 +483,12 @@ export async function replayExperienceEpisode(
     "SELECT mode FROM agent_experience_episodes WHERE user_id=? AND id=?"
   ).bind(userId, episodeId).first<{ mode: ExperienceMode }>();
   if (!episode) return null;
+  const count = await env.DB.prepare(
+    "SELECT COUNT(*) AS total FROM agent_experience_events WHERE user_id=? AND episode_id=?"
+  ).bind(userId, episodeId).first<{ total: number }>();
+  if ((count?.total || 0) > 200) {
+    return { ok: false, error: "This episode exceeds the 200-event replay limit; no partial replay was returned." };
+  }
   const events = await listExperienceEvents(env, userId, episodeId);
   if (!events) return null;
   return replayExperienceEvents(events, episode.mode);
