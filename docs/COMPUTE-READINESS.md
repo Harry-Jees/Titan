@@ -19,13 +19,15 @@ python -m training.compute_preflight
 
 The command is read-only. It checks Python training dependencies, CUDA visibility and VRAM, system RAM, free disk, curated JSONL row count and held-out JSONL presence. It never downloads weights or starts training.
 
+The strict dataset checks also require at least 20 training objects with non-empty instruction/response fields, and a held-out suite with unique IDs, supported categories, explicit expected behavior, non-vacuous scoring terms and minimum coverage of 4 capability, 3 safe-cybersecurity and 4 safety cases. This is a structural gate; the LoRA validator still performs the deeper source-provenance, digest, secret-pattern and held-out-overlap checks.
+
 CPU fallback is deliberately opt-in:
 
 ```bash
 python -m training.compute_preflight --allow-cpu
 ```
 
-CPU mode requires at least 16 GiB system RAM. GPU mode requires CUDA and at least 8 GiB VRAM. Both modes require all training dependencies, at least 20 curated examples, a non-empty held-out set and at least 10 GiB free disk.
+CPU mode requires at least 16 GiB system RAM. GPU mode requires CUDA and at least 8 GiB VRAM. Both modes require all training dependencies, at least 20 curated examples, a valid held-out suite and at least 10 GiB free disk.
 
 ## Training launch remains a separate human action
 
