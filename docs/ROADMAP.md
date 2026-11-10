@@ -24,6 +24,7 @@
 - [x] Deterministic toy balance environment and repeatable episode generator
 - [x] Pure prediction-versus-outcome error scoring and evidence-priority failure classification
 - [x] Fixed PD baseline compared with a no-op controller on five held-out initial states
+- [x] Deterministic read-only event replay with sequence, schema, action-reference, and closure validation
 - [ ] Persistence verification across process restart
 - [ ] Replay-versus-held-out isolation tests
 - [ ] Learned policy or world-model update loop
