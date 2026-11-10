@@ -333,3 +333,157 @@ export async function listExperienceEvents(env: Env, userId: string, episodeId: 
     payload: JSON.parse(row.payload_json) as Record<string, unknown>,
   }));
 }
+
+
+export interface ExperienceReplayEvent {
+  id: string;
+  sequence: number;
+  type: ExperienceEventType;
+  schemaVersion: number;
+  occurredAt: string;
+  payload: Record<string, unknown>;
+}
+
+export interface ExperienceReplay {
+  eventCount: number;
+  lastSequence: number;
+  ended: boolean;
+  summary: string | null;
+  success: boolean | null;
+  latestObservation: Record<string, RecordValue> | null;
+  predictions: Array<Record<string, unknown>>;
+  proposedActions: Array<Record<string, unknown>>;
+  validations: Array<Record<string, unknown>>;
+  outcomes: Array<Record<string, unknown>>;
+  diagnoses: Array<Record<string, unknown>>;
+  beliefs: Record<string, { summary: string; confidence: number }>;
+  timeline: Array<{ sequence: number; type: ExperienceEventType; occurredAt: string }>;
+  readOnly: true;
+  executedActions: 0;
+}
+
+/**
+ * Reconstruct a deterministic, read-only projection from a persisted event log.
+ * The function validates ordering and cross-event references; it never executes
+ * proposed actions or calls an external tool.
+ */
+export function replayExperienceEvents(
+  input: unknown,
+  episodeMode: ExperienceMode,
+): Validation<ExperienceReplay> {
+  if (!Array.isArray(input) || input.length > 200) {
+    return { ok: false, error: "Replay requires an event array containing at most 200 events." };
+  }
+
+  const replay: ExperienceReplay = {
+    eventCount: input.length,
+    lastSequence: 0,
+    ended: false,
+    summary: null,
+    success: null,
+    latestObservation: null,
+    predictions: [],
+    proposedActions: [],
+    validations: [],
+    outcomes: [],
+    diagnoses: [],
+    beliefs: {},
+    timeline: [],
+    readOnly: true,
+    executedActions: 0,
+  };
+  const proposed = new Set<string>();
+  const validated = new Map<string, boolean>();
+  const completed = new Set<string>();
+
+  for (let index = 0; index < input.length; index += 1) {
+    const raw = input[index];
+    if (!isRecord(raw)) {
+      return { ok: false, error: `Replay event ${index + 1} is not an object.` };
+    }
+    const expectedSequence = index + 1;
+    if (raw.sequence !== expectedSequence) {
+      return { ok: false, error: `Replay sequence gap: expected ${expectedSequence}, received ${String(raw.sequence)}.` };
+    }
+    if (raw.schemaVersion !== 1) {
+      return { ok: false, error: `Replay event ${expectedSequence} uses an unsupported schema version.` };
+    }
+    if (replay.ended) {
+      return { ok: false, error: "The event log contains records after episode_ended." };
+    }
+
+    const checked = validateExperienceEvent({
+      type: raw.type,
+      occurredAt: raw.occurredAt,
+      payload: raw.payload,
+    }, episodeMode);
+    if (!checked.ok) {
+      return { ok: false, error: `Replay event ${expectedSequence} is invalid: ${checked.error}` };
+    }
+    const event = checked.value;
+    const payload = event.payload;
+
+    if (event.type === "action_proposed") {
+      const actionId = String(payload.actionId);
+      if (proposed.has(actionId)) {
+        return { ok: false, error: `Action ${actionId} was proposed more than once.` };
+      }
+      proposed.add(actionId);
+      replay.proposedActions.push({ sequence: expectedSequence, ...payload });
+    } else if (event.type === "action_validated") {
+      const actionId = String(payload.actionId);
+      if (!proposed.has(actionId) || validated.has(actionId)) {
+        return { ok: false, error: `Action validation ${actionId} has no unique preceding proposal.` };
+      }
+      validated.set(actionId, payload.approved === true);
+      replay.validations.push({ sequence: expectedSequence, ...payload });
+    } else if (event.type === "outcome") {
+      const actionId = String(payload.actionId);
+      if (!proposed.has(actionId) || validated.get(actionId) !== true || completed.has(actionId)) {
+        return { ok: false, error: `Outcome ${actionId} requires one approved proposal and may be recorded only once.` };
+      }
+      completed.add(actionId);
+      replay.outcomes.push({ sequence: expectedSequence, ...payload });
+    } else if (event.type === "observation") {
+      replay.latestObservation = payload.state as Record<string, RecordValue>;
+    } else if (event.type === "prediction") {
+      replay.predictions.push({ sequence: expectedSequence, ...payload });
+    } else if (event.type === "diagnosis") {
+      replay.diagnoses.push({ sequence: expectedSequence, ...payload });
+    } else if (event.type === "belief_update") {
+      replay.beliefs[String(payload.target)] = {
+        summary: String(payload.summary),
+        confidence: Number(payload.confidence),
+      };
+    } else if (event.type === "episode_ended") {
+      replay.ended = true;
+      replay.summary = typeof payload.summary === "string" ? payload.summary : null;
+      replay.success = typeof payload.success === "boolean" ? payload.success : null;
+    }
+
+    replay.lastSequence = expectedSequence;
+    replay.timeline.push({
+      sequence: expectedSequence,
+      type: event.type,
+      occurredAt: event.occurredAt,
+    });
+  }
+
+  return { ok: true, value: replay };
+}
+
+/** Load and replay one user's episode without changing its persisted event log. */
+export async function replayExperienceEpisode(
+  env: Env,
+  userId: string,
+  episodeId: string,
+): Promise<Validation<ExperienceReplay> | null> {
+  if (!/^[A-Za-z0-9_-]{8,80}$/.test(episodeId)) return null;
+  const episode = await env.DB.prepare(
+    "SELECT mode FROM agent_experience_episodes WHERE user_id=? AND id=?"
+  ).bind(userId, episodeId).first<{ mode: ExperienceMode }>();
+  if (!episode) return null;
+  const events = await listExperienceEvents(env, userId, episodeId);
+  if (!events) return null;
+  return replayExperienceEvents(events, episode.mode);
+}
