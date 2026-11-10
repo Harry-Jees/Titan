@@ -26,7 +26,7 @@ export interface ExperienceEventInput {
   payload: Record<string, unknown>;
 }
 
-type Validation<T> = { ok: true; value: T } | { ok: false; error: string };
+type Validation<T> = { ok: true; value: T } | { ok: false; error: string; status?: number };
 
 const EVENT_TYPES = new Set<ExperienceEventType>([
   "observation",
@@ -268,8 +268,8 @@ export async function appendExperienceEvent(
   const episode = await env.DB.prepare(
     "SELECT mode,status FROM agent_experience_episodes WHERE user_id=? AND id=?"
   ).bind(userId, episodeId).first<{ mode: ExperienceMode; status: "open" | "closed" }>();
-  if (!episode) return { ok: false, error: "Episode not found.", status: 404 } as Validation<never>;
-  if (episode.status !== "open") return { ok: false, error: "Episode is already closed.", status: 409 } as Validation<never>;
+  if (!episode) return { ok: false, error: "Episode not found.", status: 404 };
+  if (episode.status !== "open") return { ok: false, error: "Episode is already closed.", status: 409 };
 
   const validated = validateExperienceEvent(input, episode.mode);
   if (!validated.ok) return validated;
@@ -301,7 +301,7 @@ export async function appendExperienceEvent(
   }
 
   if (inserted !== 1) {
-    return { ok: false, error: "Episode is no longer open.", status: 409 } as Validation<never>;
+    return { ok: false, error: "Episode is no longer open.", status: 409 };
   }
   const row = await env.DB.prepare(
     "SELECT sequence FROM agent_experience_events WHERE id=? AND user_id=?"
