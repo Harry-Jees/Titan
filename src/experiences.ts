@@ -228,7 +228,7 @@ export async function createExperienceEpisode(
   if ((result.meta.changes || 0) !== 1) {
     return { ok: false, error: "An episode with that id already exists for this user." };
   }
-  return { ok: true, value: { id, ...episode, startedAt } };
+  return { ok: true, value: { ...episode, id, startedAt } };
 }
 
 export async function listExperienceEpisodes(env: Env, userId: string) {
