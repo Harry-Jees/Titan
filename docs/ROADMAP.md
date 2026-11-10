@@ -14,8 +14,19 @@
 - [x] Bounded self-build workflow that opens review PRs only
 - [x] Python, TypeScript and Vitest CI
 
+## Stage A — digital experience loop (in progress)
+- [x] User-scoped episode metadata with simulation/read-only modes
+- [x] Versioned, ordered experience event schema and D1 storage
+- [x] Append-only event log enforced by database triggers
+- [x] Authenticated API to create/list episodes and append/retrieve events
+- [x] Event-specific validation for observations, predictions, proposed actions, outcomes, diagnoses and belief updates
+- [x] Daily quota checks on experience writes; no physical action mode
+- [ ] Deterministic toy environment and repeatable episode generator
+- [ ] Prediction-versus-outcome error scoring and explicit failure classifier
+- [ ] Baseline learner with held-out initial conditions
+- [ ] Restart/recovery and replay-versus-held-out isolation tests
+
 ## Next
-- [ ] Finish current expanded CI and fix any regressions
 - [ ] Route-level tests using disposable D1 and mocked external APIs
 - [ ] Verify auth-map rotation, token lifecycle, rate limiting and abuse controls
 - [ ] Stage-test all migrations against a disposable copy of the live D1 schema
@@ -25,4 +36,5 @@
 - [ ] Human-reviewed candidate adapter promotion only after evaluation; never auto-deploy weights
 
 ## Safety and cost boundaries
-No live Worker, D1 database, secret or schedule is modified by this repository work. The scheduled noon research workflow does not call a teacher model. Conversation curation is opt-in and stores candidates only. Teacher calls and GPU training remain separate, manual and budget-dependent. All production integration requires staging, review and explicit approval.
+
+No live Worker, D1 database, secret or schedule is modified by this repository work. The new experience migration is additive and is only tested in disposable SQLite/CI environments. The experience API records proposals and observations; it does not execute external or physical actions. The scheduled noon research workflow does not call a teacher model. Conversation curation is opt-in and stores candidates only. Teacher calls and GPU training remain separate, manual and budget-dependent. All production integration requires staging, review and explicit approval.
