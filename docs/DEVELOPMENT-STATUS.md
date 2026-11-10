@@ -1,4 +1,22 @@
-# Development status — 2026-11-08
+# Development status — 2026-11-11
+
+
+## Stage A experience-memory and simulation foundation — implementation branch
+
+Implemented on the implementation/digital-experience-loop-20261111 branch:
+
+- Added an additive D1 migration for user-scoped experience episodes and a versioned event log.
+- Enforced append-only event records with SQLite triggers against updates and deletes.
+- Added typed event validation for observations, predictions, proposed actions, validation decisions, outcomes, diagnoses, belief updates, and episode closure.
+- Added authenticated episode/event create, list, append, and retrieval routes with per-user daily write quotas.
+- Restricted episode modes to simulation and read_only; proposed actions are records only and are never executed by these endpoints.
+- Added a standard-library-only deterministic toy balance simulator with pure prediction and measured transition output.
+- Added absolute prediction-error scoring, evidence-priority failure classification, and a fixed PD baseline.
+- Compared the fixed controller with a no-op on five deterministic held-out initial states; added a JSONL episode generator compatible with the Stage A event payloads.
+- Added deterministic read-only event replay with sequence, schema-version, action-reference, and closure checks; replay never executes proposed actions.
+- Added Vitest replay tests alongside event-schema tests, Python simulation tests, and SQLite migration tests.
+
+The simulator is a fixed baseline, not a learned policy. Route-level disposable-D1 tests, persistence verification across process restart, held-out evaluation isolation, and a learned policy/world model remain outstanding. The migration has not been applied to live D1; no model training or external actions were run.
 
 ## Implemented on development/titan-foundation
 - Cloudflare Worker API for chat, conversations, memory, knowledge, evaluation, API-tool provisioning and per-user training preferences.

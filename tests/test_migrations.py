@@ -96,6 +96,7 @@ class MigrationTests(unittest.TestCase):
         expected = {
             "api_tools", "pending_tool_calls", "tool_audit", "usage_limits",
             "training_preferences", "training_examples", "training_runs",
+            "agent_experience_episodes", "agent_experience_events",
         }
         actual = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         self.assertTrue(expected.issubset(actual))
@@ -156,6 +157,44 @@ class MigrationTests(unittest.TestCase):
             db.execute("SELECT name FROM d1_migrations ORDER BY id").fetchall(),
             [("0001_init.sql",), ("0002_cloud_agent.sql",)],
         )
+        db.close()
+
+
+    def test_experience_events_are_scoped_versioned_and_append_only(self):
+        db = sqlite3.connect(":memory:")
+        apply_repository_migrations(db)
+        db.execute(
+            "INSERT INTO agent_experience_episodes "
+            "(id,user_id,environment_id,goal,mode,started_at) VALUES (?,?,?,?,?,?)",
+            ("episode_0001", "scope-a", "toy-balance", "Keep balance", "simulation", "2026-11-11T00:00:00Z"),
+        )
+        db.execute(
+            "INSERT INTO agent_experience_events "
+            "(id,user_id,episode_id,sequence,event_type,schema_version,occurred_at,payload_json) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            ("event_0001", "scope-a", "episode_0001", 1, "observation", 1,
+             "2026-11-11T00:00:01Z", '{"state":{"angle":0.1},"source":"toy"}'),
+        )
+        self.assertEqual(
+            db.execute(
+                "SELECT sequence,event_type FROM agent_experience_events "
+                "WHERE user_id=? AND episode_id=?",
+                ("scope-a", "episode_0001"),
+            ).fetchall(),
+            [(1, "observation")],
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            db.execute(
+                "UPDATE agent_experience_events SET payload_json='{}' WHERE id='event_0001'"
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            db.execute("DELETE FROM agent_experience_events WHERE id='event_0001'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            db.execute(
+                "INSERT INTO agent_experience_episodes "
+                "(id,user_id,environment_id,goal,mode,started_at) VALUES (?,?,?,?,?,?)",
+                ("episode_0002", "scope-a", "robot", "Move", "physical", "2026-11-11T00:00:00Z"),
+            )
         db.close()
 
 
