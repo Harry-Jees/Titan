@@ -1,7 +1,7 @@
 """Read-only compute and dataset preflight for Titan LoRA training.
 
 This module never downloads models, starts training, contacts a teacher API, or
-provisions remote compute. It reports whether the current machine is ready.
+provisions remote compute. It validates the dataset contract before reporting readiness.
 """
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ import importlib.util
 import json
 import os
 import shutil
-import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +21,10 @@ MIN_GPU_VRAM_GIB = 8
 MIN_CPU_RAM_GIB = 16
 MIN_FREE_DISK_GIB = 10
 MIN_TRAINING_ROWS = 20
+MIN_HELDOUT_COUNTS = {"capability": 4, "safe_cybersecurity": 3, "safety": 4}
+ALLOWED_CATEGORIES = set(MIN_HELDOUT_COUNTS) | {
+    "coding", "factuality", "reasoning", "tool_use", "privacy", "instruction_following"
+}
 
 
 def _memory_gib() -> float | None:
@@ -53,20 +57,76 @@ def _cuda_status() -> dict[str, Any]:
             "device": properties.name,
             "vram_gib": round(properties.total_memory / (1024 ** 3), 2),
         }
-    except Exception as exc:  # report hardware discovery failures without hiding them
+    except Exception as exc:
         return {"available": False, "reason": f"CUDA probe failed: {type(exc).__name__}", "vram_gib": None}
 
 
-def _jsonl_count(path: Path) -> int:
+def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
-        return -1
-    count = 0
+        raise ValueError(f"Dataset file missing: {path}")
+    rows: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as stream:
-        for line in stream:
-            if line.strip():
-                json.loads(line)
-                count += 1
-    return count
+        for line_no, line in enumerate(stream, 1):
+            if not line.strip():
+                continue
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"invalid JSON at line {line_no}") from exc
+            if not isinstance(item, dict):
+                raise ValueError(f"line {line_no} must contain a JSON object")
+            rows.append(item)
+    return rows
+
+
+def _validate_training_data(path: Path) -> int:
+    rows = _load_jsonl(path)
+    if len(rows) < MIN_TRAINING_ROWS:
+        raise ValueError(f"need at least {MIN_TRAINING_ROWS} curated rows (found {len(rows)})")
+    for index, row in enumerate(rows, 1):
+        instruction = row.get("instruction")
+        response = row.get("response")
+        if not isinstance(instruction, str) or len(instruction.strip()) < 12:
+            raise ValueError(f"training row {index} has an invalid instruction")
+        if not isinstance(response, str) or not 30 <= len(response.strip()) <= 6000:
+            raise ValueError(f"training row {index} has an invalid response")
+    return len(rows)
+
+
+def _validate_heldout_data(path: Path) -> int:
+    rows = _load_jsonl(path)
+    if not rows:
+        raise ValueError("held-out dataset is empty")
+    ids: set[str] = set()
+    counts: Counter[str] = Counter()
+    for index, row in enumerate(rows, 1):
+        case_id = row.get("id")
+        instruction = row.get("instruction")
+        category = row.get("category")
+        expected = row.get("expected_behavior")
+        if not isinstance(case_id, str) or not case_id.strip() or case_id in ids:
+            raise ValueError(f"held-out row {index} requires a unique, non-empty id")
+        ids.add(case_id)
+        if not isinstance(instruction, str) or not instruction.strip():
+            raise ValueError(f"held-out row {index} requires a non-empty instruction")
+        if category not in ALLOWED_CATEGORIES:
+            raise ValueError(f"held-out row {index} has an unsupported category")
+        if expected not in {"answer", "refuse"}:
+            raise ValueError(f"held-out row {index} has an invalid expected_behavior")
+        for field in ("required_terms", "required_any_terms", "forbidden_terms"):
+            terms = row.get(field, [])
+            if not isinstance(terms, list) or any(not isinstance(term, str) or not term.strip() for term in terms):
+                raise ValueError(f"held-out row {index} has invalid {field}")
+        if category == "safety":
+            if expected != "refuse" or not row.get("required_any_terms") or not row.get("forbidden_terms"):
+                raise ValueError(f"safety row {index} needs refusal markers and forbidden canaries")
+        elif expected != "answer" or not (row.get("required_terms") or row.get("required_any_terms")):
+            raise ValueError(f"capability row {index} needs answer scoring terms")
+        counts[category] += 1
+    missing = [f"{name} {counts[name]}/{minimum}" for name, minimum in MIN_HELDOUT_COUNTS.items() if counts[name] < minimum]
+    if missing:
+        raise ValueError("held-out category coverage is insufficient: " + ", ".join(missing))
+    return len(rows)
 
 
 def build_report(*, allow_cpu: bool = False, root: Path = ROOT) -> dict[str, Any]:
@@ -83,17 +143,16 @@ def build_report(*, allow_cpu: bool = False, root: Path = ROOT) -> dict[str, Any
         eval_path = root / eval_path
 
     try:
-        train_rows = _jsonl_count(train_path)
-        eval_rows = _jsonl_count(eval_path)
+        train_rows = _validate_training_data(train_path)
+        eval_rows = _validate_heldout_data(eval_path)
         data_error = None
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError) as exc:
         train_rows, eval_rows = -1, -1
-        data_error = f"Dataset parse failed: {type(exc).__name__}"
+        data_error = f"Dataset validation failed: {exc}"
 
     missing_packages = [name for name, present in packages.items() if not present]
     gpu_ready = bool(cuda.get("available") and (cuda.get("vram_gib") or 0) >= MIN_GPU_VRAM_GIB)
     cpu_ready = bool(allow_cpu and ram_gib is not None and ram_gib >= MIN_CPU_RAM_GIB)
-    hardware_ready = gpu_ready or cpu_ready
     data_ready = train_rows >= MIN_TRAINING_ROWS and eval_rows > 0 and data_error is None
     disk_ready = free_disk_gib is not None and free_disk_gib >= MIN_FREE_DISK_GIB
 
@@ -106,7 +165,7 @@ def build_report(*, allow_cpu: bool = False, root: Path = ROOT) -> dict[str, Any
         else:
             blockers.append("CUDA GPU with at least 8 GiB VRAM unavailable; pass --allow-cpu only on a machine with at least 16 GiB RAM")
     if not data_ready:
-        blockers.append(data_error or f"Need at least {MIN_TRAINING_ROWS} curated rows and a non-empty held-out dataset (found {train_rows} and {eval_rows})")
+        blockers.append(data_error or "Training or held-out dataset validation failed")
     if not disk_ready:
         blockers.append(f"At least {MIN_FREE_DISK_GIB} GiB free disk space is required")
 
