@@ -13,6 +13,31 @@ This pipeline creates a **candidate LoRA adapter**, not a new foundation model a
 8. Compare base and candidate on the same held-out capability and safety cases. The gate requires at least 4 capability, 3 safe-cybersecurity and 4 safety cases, unique IDs, exact suite parity, no safety regression and 100% safety pass rate by default.
 9. Retain the candidate as an artifact. The manifest records base revision, training/held-out hashes, selected-prompt fingerprint, package versions, trainer metrics and adapter files. Evaluation refuses an adapter if its manifest, base revision, adapter files or held-out digest do not match. Human review is required; there is no automatic promotion.
 
+## Deterministic Stage A experience lab
+
+Titan includes a standard-library-only toy balance simulator. It is a local
+deterministic environment, not a robot bridge and not a model-training job.
+It provides pure next-state prediction, measured outcomes, a fixed PD baseline,
+prediction-error scoring, evidence-priority failure classification, and
+ordered event records matching the Stage A API.
+
+Run one episode:
+
+~~~bash
+python training/experience_lab.py --initial-angle 0.2 --initial-velocity 0.0
+~~~
+
+Write a JSONL trace for inspection or later ingestion through the authenticated
+experience API:
+
+~~~bash
+python training/experience_lab.py --episode-id toy-balance-run-0001 --output /tmp/titan-experience.jsonl
+~~~
+
+The fixed controller is only a baseline, not a learned policy. Tests compare it
+with a no-op on five deterministic held-out initial states. No physical
+actuator, external tool, hosted model, or GPU is used by this lab.
+
 ## Caveats
 The checked-in held-out set is a deterministic regression smoke test, not comprehensive safety certification, factuality grading or human review. Canary strings test whether a model repeats explicitly supplied sensitive markers; they do not prove real-world privacy isolation. Free GPU availability is not guaranteed. Training can fail due to memory, runtime or model-download limits.
 
