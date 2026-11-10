@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   validateExperienceEpisode,
   validateExperienceEvent,
+  replayExperienceEvents,
 } from "../src/experiences";
 
 describe("experience episode validation", () => {
@@ -152,5 +153,80 @@ describe("experience event validation", () => {
       type: "execute",
       payload: {},
     }, "simulation").ok).toBe(false);
+  });
+});
+
+
+describe("experience event replay", () => {
+  const at = "2026-11-11T00:00:00.000Z";
+  const event = (sequence: number, type: string, payload: Record<string, unknown>) => ({
+    id: `event_${String(sequence).padStart(4, "0")}`,
+    sequence,
+    type,
+    schemaVersion: 1,
+    occurredAt: at,
+    payload,
+  });
+
+  it("reconstructs a deterministic read-only episode projection", () => {
+    const result = replayExperienceEvents([
+      event(1, "observation", { source: "toy-balance", state: { angle: 0.12 } }),
+      event(2, "prediction", { actionId: "step_01", expected: { angle: 0.1 }, uncertainty: 0.2 }),
+      event(3, "action_proposed", {
+        actionId: "step_01", name: "apply_torque", parameters: { amount: 0.05 }, mode: "simulation",
+      }),
+      event(4, "action_validated", { actionId: "step_01", approved: true, reason: "Simulation action is bounded" }),
+      event(5, "outcome", { actionId: "step_01", observed: { angle: 0.11 }, success: true, reward: 0.9 }),
+      event(6, "belief_update", { target: "world_model", summary: "Small positive torque reduces angle", confidence: 0.8 }),
+      event(7, "episode_ended", { summary: "Trial completed", success: true }),
+    ], "simulation");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toMatchObject({
+      eventCount: 7,
+      lastSequence: 7,
+      ended: true,
+      summary: "Trial completed",
+      success: true,
+      latestObservation: { angle: 0.12 },
+      proposedActions: [{ actionId: "step_01" }],
+      validations: [{ actionId: "step_01", approved: true }],
+      outcomes: [{ actionId: "step_01", success: true }],
+      beliefs: { world_model: { confidence: 0.8 } },
+      readOnly: true,
+      executedActions: 0,
+    });
+    expect(result.value.timeline.map(item => item.sequence)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  it("rejects gaps, unsupported schemas, and records after episode closure", () => {
+    const gap = replayExperienceEvents([
+      event(1, "observation", { source: "sensor", state: { angle: 0.1 } }),
+      event(3, "episode_ended", { success: true }),
+    ], "simulation");
+    expect(gap.ok).toBe(false);
+
+    const unsupported = replayExperienceEvents([
+      { ...event(1, "episode_ended", {}), schemaVersion: 2 },
+    ], "simulation");
+    expect(unsupported.ok).toBe(false);
+
+    const afterEnd = replayExperienceEvents([
+      event(1, "episode_ended", { success: true }),
+      event(2, "observation", { source: "sensor", state: { angle: 0.1 } }),
+    ], "simulation");
+    expect(afterEnd.ok).toBe(false);
+  });
+
+  it("rejects outcomes without a preceding approved action", () => {
+    const result = replayExperienceEvents([
+      event(1, "action_proposed", {
+        actionId: "step_01", name: "apply_torque", parameters: { amount: 0.05 }, mode: "simulation",
+      }),
+      event(2, "outcome", { actionId: "step_01", observed: { angle: 0.1 } }),
+    ], "simulation");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("approved proposal");
   });
 });
