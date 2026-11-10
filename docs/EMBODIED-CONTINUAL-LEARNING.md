@@ -1,32 +1,38 @@
 # Titan: embodied continual-learning architecture
 
-**Status:** architectural contract; Stage A persistence is being implemented behind simulation and safety gates. No physical actions are enabled.
+**Status:** architectural contract; Stage A has a local simulation and persistence foundation in implementation. No physical actions are enabled.
 
 Titan is not intended to be only a chat model. It is a persistent autonomous agent that learns from interaction with its environment and can operate through a digital or physical body. A language model may be one reasoning component; it is not the whole intelligence.
 
 ## Stage A implementation status — 2026-11-11
 
-The first digital experience-memory foundation is now implemented on the
-\`implementation/digital-experience-loop-20261111\` branch:
+The first digital experience-memory and simulation foundation is implemented on
+the implementation/digital-experience-loop-20261111 branch:
 
-- User-scoped episode metadata with explicit \`simulation\` or \`read_only\` mode.
+- User-scoped episode metadata with explicit simulation or read_only mode.
 - A versioned, ordered D1 event log for observations, predictions, proposed
   actions, validation decisions, outcomes, diagnoses, belief updates, and episode end.
 - Event payload validation with bounded fields, finite numeric values, timestamps,
   source attribution, and event-specific schemas.
 - Database triggers that reject updates and deletes to experience events.
 - Authenticated API routes to create/list episodes, append events, and retrieve
-  an episode's event history.
-- Per-user daily quota checks on episode and event writes.
+  an episode's event history, with per-user daily write quotas.
+- A standard-library-only deterministic toy balance environment in
+  training/experience_lab.py.
+- Pure transition prediction, measured outcomes, absolute-error scoring, and
+  evidence-priority failure classification.
+- A fixed PD controller compared against a no-op baseline across five held-out
+  initial states; the simulator emits event records matching the Stage A API.
 
 The API records proposed actions; it does not execute tools, actuators, or
-physical actions. The database migration is additive and has not been applied
-to any live D1 database.
+physical actions. The simulator runs only in-process. The database migration
+is additive and has not been applied to any live D1 database. No model weights
+have been trained or changed.
 
-Still outstanding for Stage A: a deterministic toy environment, a baseline
-learner, prediction-versus-outcome scoring, explicit failure classification
-from measured error, replay/held-out isolation, and restart/recovery tests.
-No model weights have been trained or changed.
+Still outstanding: route-level tests against disposable D1, persistence
+verification across process restart, replay/held-out isolation, and a genuinely
+learned policy or world model. The fixed PD controller is a deterministic
+baseline, not a learned agent.
 
 ## 1. Meaning of a "real entity"
 
@@ -152,4 +158,4 @@ Build Stage A before buying or connecting robot hardware:
 5. Test persistence across process restart and verify that replay cannot silently contaminate held-out evaluation.
 6. Expose no physical actuator by default.
 
-The current branch establishes the event storage/API foundation only. The toy environment, learner, scoring, and replay-isolation checks remain the next implementation work.
+The current branch establishes typed event storage/API, a deterministic simulation, a fixed baseline, prediction-error scoring, and failure classification. Disposable-D1 route tests, restart/recovery, replay isolation, and a learned policy remain future work.
