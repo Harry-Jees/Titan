@@ -160,10 +160,6 @@ class MigrationTests(unittest.TestCase):
         db.close()
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
     def test_experience_events_are_scoped_versioned_and_append_only(self):
         db = sqlite3.connect(":memory:")
         apply_repository_migrations(db)
@@ -200,3 +196,7 @@ if __name__ == "__main__":
                 ("episode_0002", "scope-a", "robot", "Move", "physical", "2026-11-11T00:00:00Z"),
             )
         db.close()
+
+
+if __name__ == "__main__":
+    unittest.main()
