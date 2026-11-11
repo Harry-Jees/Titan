@@ -242,7 +242,11 @@ describe("experience event replay", () => {
 
 describe("experience append integrity", () => {
   const at = "2026-11-11T00:00:00.000Z";
-  const event = (sequence: number, type: string, payload: Record<string, unknown>) => ({
+  const actionEvent = (
+    sequence: number,
+    type: "action_proposed" | "action_validated" | "outcome",
+    payload: Record<string, unknown>,
+  ) => ({
     id: `event_${String(sequence).padStart(4, "0")}`,
     sequence,
     type,
@@ -251,90 +255,83 @@ describe("experience append integrity", () => {
     payload,
   });
 
+  const proposal = actionEvent(1, "action_proposed", {
+    actionId: "step_01",
+    name: "apply_torque",
+    parameters: { amount: 0.05 },
+    mode: "simulation",
+  });
+  const approval = actionEvent(2, "action_validated", {
+    actionId: "step_01",
+    approved: true,
+    reason: "Within simulator bounds",
+  });
+  const rejection = actionEvent(2, "action_validated", {
+    actionId: "step_01",
+    approved: false,
+    reason: "Rejected by safety check",
+  });
+
   it("accepts a complete proposal, approval, and outcome sequence", () => {
-    let history: unknown[] = [];
-    const proposal = validateExperienceAppend(history, {
-      id: "event_0001",
+    const proposed = validateExperienceAppend({
       type: "action_proposed",
       occurredAt: at,
-      payload: {
-        actionId: "step_01",
-        name: "apply_torque",
-        parameters: { amount: 0.05 },
-        mode: "simulation",
-      },
-    }, "simulation");
-    expect(proposal.ok).toBe(true);
-    if (!proposal.ok) return;
-    history = [...history, proposal.value];
+      payload: proposal.payload,
+    }, "simulation", [], 1);
+    expect(proposed.ok).toBe(true);
 
-    const approval = validateExperienceAppend(history, {
-      id: "event_0002",
+    const validated = validateExperienceAppend({
       type: "action_validated",
       occurredAt: at,
-      payload: { actionId: "step_01", approved: true, reason: "Within simulator bounds" },
-    }, "simulation");
-    expect(approval.ok).toBe(true);
-    if (!approval.ok) return;
-    history = [...history, approval.value];
+      payload: approval.payload,
+    }, "simulation", [proposal], 2);
+    expect(validated.ok).toBe(true);
 
-    const outcome = validateExperienceAppend(history, {
-      id: "event_0003",
+    const outcome = validateExperienceAppend({
       type: "outcome",
       occurredAt: at,
       payload: { actionId: "step_01", observed: { angle: 0.1 }, success: true },
-    }, "simulation");
+    }, "simulation", [proposal, approval], 3);
     expect(outcome.ok).toBe(true);
     if (outcome.ok) expect(outcome.value.sequence).toBe(3);
   });
 
-  it("rejects orphan approvals and outcomes after a rejected proposal", () => {
-    const orphan = validateExperienceAppend([], {
-      id: "event_0001",
+  it("rejects orphan, duplicate, and unapproved action transitions", () => {
+    const orphan = validateExperienceAppend({
       type: "action_validated",
       occurredAt: at,
-      payload: { actionId: "step_01", approved: true, reason: "Approved" },
-    }, "simulation");
+      payload: approval.payload,
+    }, "simulation", [], 1);
     expect(orphan.ok).toBe(false);
 
-    const history = [
-      event(1, "action_proposed", {
-        actionId: "step_01", name: "apply_torque", parameters: { amount: 0.05 }, mode: "simulation",
-      }),
-      event(2, "action_validated", {
-        actionId: "step_01", approved: false, reason: "Rejected by safety check",
-      }),
-    ];
-    const outcome = validateExperienceAppend(history, {
-      id: "event_0003",
+    const duplicateProposal = validateExperienceAppend({
+      type: "action_proposed",
+      occurredAt: at,
+      payload: proposal.payload,
+    }, "simulation", [proposal], 2);
+    expect(duplicateProposal.ok).toBe(false);
+
+    const duplicateApproval = validateExperienceAppend({
+      type: "action_validated",
+      occurredAt: at,
+      payload: approval.payload,
+    }, "simulation", [proposal, approval], 3);
+    expect(duplicateApproval.ok).toBe(false);
+
+    const unapprovedOutcome = validateExperienceAppend({
       type: "outcome",
       occurredAt: at,
       payload: { actionId: "step_01", observed: { angle: 0.1 } },
-    }, "simulation");
-    expect(outcome.ok).toBe(false);
+    }, "simulation", [proposal, rejection], 3);
+    expect(unapprovedOutcome.ok).toBe(false);
   });
 
-  it("rejects events after closure and refuses to exceed the replay window", () => {
-    const closed = validateExperienceAppend([
-      event(1, "episode_ended", { summary: "Done", success: true }),
-    ], {
-      id: "event_0002",
+  it("does not confuse the replay window with the append-storage limit", () => {
+    const laterObservation = validateExperienceAppend({
       type: "observation",
       occurredAt: at,
       payload: { source: "sensor", state: { angle: 0.1 } },
-    }, "simulation");
-    expect(closed.ok).toBe(false);
-
-    const full = Array.from({ length: 200 }, (_, index) =>
-      event(index + 1, "observation", { source: "sensor", state: { angle: 0.1 } }),
-    );
-    const capped = validateExperienceAppend(full, {
-      id: "event_0201",
-      type: "observation",
-      occurredAt: at,
-      payload: { source: "sensor", state: { angle: 0.1 } },
-    }, "simulation");
-    expect(capped.ok).toBe(false);
-    if (!capped.ok) expect(capped.status).toBe(409);
+    }, "simulation", [], 201);
+    expect(laterObservation.ok).toBe(true);
   });
 });

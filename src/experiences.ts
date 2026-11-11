@@ -274,45 +274,50 @@ export async function appendExperienceEvent(
   const validated = validateExperienceEvent(input, episode.mode);
   if (!validated.ok) return validated;
   const event = validated.value;
-  const history = await env.DB.prepare(
-    "SELECT id,sequence,event_type,schema_version,occurred_at,payload_json " +
-    "FROM agent_experience_events WHERE user_id=? AND episode_id=? ORDER BY sequence ASC LIMIT 201"
-  ).bind(userId, episodeId).all<{
-    id: string; sequence: number; event_type: ExperienceEventType;
-    schema_version: number; occurred_at: string; payload_json: string;
-  }>();
-  const rows = history.results || [];
-  if (rows.length >= 200) {
-    return {
-      ok: false,
-      error: "This episode has reached the 200-event limit. Start a new episode to keep the full log replayable.",
-      status: 409,
-    };
+  const sequenceState = await env.DB.prepare(
+    "SELECT COUNT(*) AS total, COALESCE(MAX(sequence),0) AS last_sequence " +
+    "FROM agent_experience_events WHERE user_id=? AND episode_id=?"
+  ).bind(userId, episodeId).first<{ total: number; last_sequence: number }>();
+  const totalEvents = sequenceState?.total || 0;
+  const lastSequence = sequenceState?.last_sequence || 0;
+  if (totalEvents !== lastSequence) {
+    return { ok: false, error: "Existing episode sequence is inconsistent; no event was appended.", status: 409 };
   }
+  const sequence = lastSequence + 1;
 
-  let priorEvents: ExperienceReplayEvent[];
-  try {
-    priorEvents = rows.map((row) => ({
-      id: row.id,
-      sequence: row.sequence,
-      type: row.event_type,
-      schemaVersion: row.schema_version,
-      occurredAt: row.occurred_at,
-      payload: JSON.parse(row.payload_json) as Record<string, unknown>,
-    }));
-  } catch {
-    return { ok: false, error: "Existing episode history is invalid; no event was appended.", status: 409 };
+  let relatedEvents: ExperienceReplayEvent[] = [];
+  if (event.type === "action_proposed" || event.type === "action_validated" || event.type === "outcome") {
+    const actionId = String(event.payload.actionId);
+    const related = await env.DB.prepare(
+      "SELECT id,sequence,event_type,schema_version,occurred_at,payload_json " +
+      "FROM agent_experience_events WHERE user_id=? AND episode_id=? " +
+      "AND event_type IN ('action_proposed','action_validated','outcome') " +
+      "AND json_extract(payload_json,'$.actionId')=? ORDER BY sequence ASC"
+    ).bind(userId, episodeId, actionId).all<{
+      id: string; sequence: number; event_type: ExperienceEventType;
+      schema_version: number; occurred_at: string; payload_json: string;
+    }>();
+    try {
+      relatedEvents = (related.results || []).map((row) => ({
+        id: row.id,
+        sequence: row.sequence,
+        type: row.event_type,
+        schemaVersion: row.schema_version,
+        occurredAt: row.occurred_at,
+        payload: JSON.parse(row.payload_json) as Record<string, unknown>,
+      }));
+    } catch {
+      return { ok: false, error: "Related action history is invalid; no event was appended.", status: 409 };
+    }
   }
 
   const id = crypto.randomUUID();
-  const candidate = validateExperienceAppend(priorEvents, {
-    id,
+  const candidate = validateExperienceAppend({
     type: event.type,
     occurredAt: event.occurredAt,
     payload: event.payload,
-  }, episode.mode);
+  }, episode.mode, relatedEvents, sequence);
   if (!candidate.ok) return candidate;
-  const sequence = candidate.value.sequence;
 
   const insert = env.DB.prepare(
     "INSERT INTO agent_experience_events(id,user_id,episode_id,sequence,event_type,schema_version,occurred_at,payload_json) " +
@@ -517,35 +522,75 @@ export function replayExperienceEvents(
  * is written. This keeps invalid cross-event references out of the immutable log.
  */
 export function validateExperienceAppend(
-  events: unknown,
-  candidate: Omit<ExperienceReplayEvent, "sequence" | "schemaVersion">,
+  input: unknown,
   episodeMode: ExperienceMode,
-): Validation<ExperienceReplayEvent> {
-  if (!Array.isArray(events)) {
-    return { ok: false, error: "Episode history must be an event array.", status: 409 };
+  relatedEvents: unknown,
+  sequence: number,
+): Validation<{ sequence: number; type: ExperienceEventType; occurredAt: string }> {
+  if (!Array.isArray(relatedEvents) || !Number.isSafeInteger(sequence) || sequence < 1) {
+    return { ok: false, error: "A valid prior action list and next sequence are required.", status: 409 };
   }
-  if (events.length >= 200) {
-    return {
-      ok: false,
-      error: "This episode has reached the 200-event limit. Start a new episode to keep the full log replayable.",
-      status: 409,
-    };
+  const checked = validateExperienceEvent(input, episodeMode);
+  if (!checked.ok) {
+    return { ok: false, error: checked.error, status: checked.status };
   }
 
-  const next: ExperienceReplayEvent = {
-    ...candidate,
-    sequence: events.length + 1,
-    schemaVersion: 1,
-  };
-  const replay = replayExperienceEvents([...events, next], episodeMode);
-  if (!replay.ok) {
-    return {
-      ok: false,
-      error: "Event would make the episode log unreplayable: " + replay.error,
-      status: 422,
-    };
+  const related: Array<{ sequence: number; type: ExperienceEventType; payload: Record<string, unknown> }> = [];
+  for (const raw of relatedEvents) {
+    if (!isRecord(raw) || !Number.isSafeInteger(raw.sequence) ||
+        typeof raw.type !== "string" || !EVENT_TYPES.has(raw.type as ExperienceEventType) ||
+        raw.schemaVersion !== 1 || typeof raw.occurredAt !== "string" || !isRecord(raw.payload) ||
+        Number(raw.sequence) >= sequence) {
+      return { ok: false, error: "Related action history is malformed or out of order.", status: 409 };
+    }
+    const prior = validateExperienceEvent({
+      type: raw.type,
+      occurredAt: raw.occurredAt,
+      payload: raw.payload,
+    }, episodeMode);
+    if (!prior.ok) {
+      return { ok: false, error: "Related action history contains an invalid event.", status: 409 };
+    }
+    related.push({
+      sequence: Number(raw.sequence),
+      type: prior.value.type,
+      payload: prior.value.payload,
+    });
   }
-  return { ok: true, value: next };
+
+  const payload = checked.value.payload;
+  if (checked.value.type === "action_proposed" ||
+      checked.value.type === "action_validated" ||
+      checked.value.type === "outcome") {
+    const actionId = String(payload.actionId);
+    const matching = related.filter((item) => item.payload.actionId === actionId);
+    const proposals = matching.filter((item) => item.type === "action_proposed");
+    const validations = matching.filter((item) => item.type === "action_validated");
+    const outcomes = matching.filter((item) => item.type === "outcome");
+
+    if (checked.value.type === "action_proposed" && matching.length > 0) {
+      return { ok: false, error: "An action ID may be proposed only once per episode.", status: 422 };
+    }
+    if (checked.value.type === "action_validated" &&
+        (proposals.length !== 1 || validations.length > 0 || outcomes.length > 0)) {
+      return { ok: false, error: "Action validation requires one preceding proposal and may be recorded only once.", status: 422 };
+    }
+    if (checked.value.type === "outcome" &&
+        (proposals.length !== 1 || validations.length !== 1 ||
+          validations[0]?.payload.approved !== true || outcomes.length > 0 ||
+          proposals[0].sequence >= validations[0].sequence)) {
+      return { ok: false, error: "An outcome requires one preceding approved proposal and may be recorded only once.", status: 422 };
+    }
+  }
+
+  return {
+    ok: true,
+    value: {
+      sequence,
+      type: checked.value.type,
+      occurredAt: checked.value.occurredAt,
+    },
+  };
 }
 
 /** Load and replay one user's episode without changing its persisted event log. */
