@@ -242,6 +242,14 @@ describe("experience event replay", () => {
 
 describe("experience append integrity", () => {
   const at = "2026-11-11T00:00:00.000Z";
+  const event = (sequence: number, type: string, payload: Record<string, unknown>) => ({
+    id: `event_${String(sequence).padStart(4, "0")}`,
+    sequence,
+    type,
+    schemaVersion: 1,
+    occurredAt: at,
+    payload,
+  });
 
   it("accepts a complete proposal, approval, and outcome sequence", () => {
     let history: unknown[] = [];
