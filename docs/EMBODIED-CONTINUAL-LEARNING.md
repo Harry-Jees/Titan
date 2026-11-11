@@ -20,6 +20,8 @@ the implementation/digital-experience-loop-20261111 branch:
   with per-user daily write quotas.
 - Replay checks contiguous sequence numbers, schema versions, action proposal/
   approval/outcome references, and episode closure; it never executes actions.
+- Every append is checked against the complete ordered history before insertion, so orphan approvals, outcomes without approval, duplicate action IDs, and records after closure are rejected before they enter the immutable log.
+- Episodes are capped at the 200-event replay window; an expected-sequence condition rejects stale concurrent appends instead of silently corrupting ordering.
 - A standard-library-only deterministic toy balance environment in
   training/experience_lab.py.
 - Pure transition prediction, measured outcomes, absolute-error scoring, and

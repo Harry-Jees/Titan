@@ -274,14 +274,54 @@ export async function appendExperienceEvent(
   const validated = validateExperienceEvent(input, episode.mode);
   if (!validated.ok) return validated;
   const event = validated.value;
+  const history = await env.DB.prepare(
+    "SELECT id,sequence,event_type,schema_version,occurred_at,payload_json " +
+    "FROM agent_experience_events WHERE user_id=? AND episode_id=? ORDER BY sequence ASC LIMIT 201"
+  ).bind(userId, episodeId).all<{
+    id: string; sequence: number; event_type: ExperienceEventType;
+    schema_version: number; occurred_at: string; payload_json: string;
+  }>();
+  const rows = history.results || [];
+  if (rows.length >= 200) {
+    return {
+      ok: false,
+      error: "This episode has reached the 200-event limit. Start a new episode to keep the full log replayable.",
+      status: 409,
+    };
+  }
+
+  let priorEvents: ExperienceReplayEvent[];
+  try {
+    priorEvents = rows.map((row) => ({
+      id: row.id,
+      sequence: row.sequence,
+      type: row.event_type,
+      schemaVersion: row.schema_version,
+      occurredAt: row.occurred_at,
+      payload: JSON.parse(row.payload_json) as Record<string, unknown>,
+    }));
+  } catch {
+    return { ok: false, error: "Existing episode history is invalid; no event was appended.", status: 409 };
+  }
+
   const id = crypto.randomUUID();
+  const candidate = validateExperienceAppend(priorEvents, {
+    id,
+    type: event.type,
+    occurredAt: event.occurredAt,
+    payload: event.payload,
+  }, episode.mode);
+  if (!candidate.ok) return candidate;
+  const sequence = candidate.value.sequence;
+
   const insert = env.DB.prepare(
     "INSERT INTO agent_experience_events(id,user_id,episode_id,sequence,event_type,schema_version,occurred_at,payload_json) " +
-    "SELECT ?,?,?,COALESCE((SELECT MAX(sequence)+1 FROM agent_experience_events WHERE user_id=? AND episode_id=?),1),?,1,?,? " +
-    "WHERE EXISTS(SELECT 1 FROM agent_experience_episodes WHERE user_id=? AND id=? AND status='open')"
+    "SELECT ?,?,?,?,?,1,?,? " +
+    "WHERE EXISTS(SELECT 1 FROM agent_experience_episodes WHERE user_id=? AND id=? AND status='open') " +
+    "AND COALESCE((SELECT MAX(sequence) FROM agent_experience_events WHERE user_id=? AND episode_id=?),0)=?"
   ).bind(
-    id, userId, episodeId, userId, episodeId, event.type,
-    event.occurredAt, JSON.stringify(event.payload), userId, episodeId,
+    id, userId, episodeId, sequence, event.type, event.occurredAt,
+    JSON.stringify(event.payload), userId, episodeId, userId, episodeId, sequence - 1,
   );
 
   let inserted = 0;
@@ -301,7 +341,7 @@ export async function appendExperienceEvent(
   }
 
   if (inserted !== 1) {
-    return { ok: false, error: "Episode is no longer open.", status: 409 };
+    return { ok: false, error: "Episode changed while the event was being appended. Reload it and retry.", status: 409 };
   }
   const row = await env.DB.prepare(
     "SELECT sequence FROM agent_experience_events WHERE id=? AND user_id=?"
@@ -470,6 +510,42 @@ export function replayExperienceEvents(
   }
 
   return { ok: true, value: replay };
+}
+
+/**
+ * Validate a candidate append against the complete ordered history before it
+ * is written. This keeps invalid cross-event references out of the immutable log.
+ */
+export function validateExperienceAppend(
+  events: unknown,
+  candidate: Omit<ExperienceReplayEvent, "sequence" | "schemaVersion">,
+  episodeMode: ExperienceMode,
+): Validation<ExperienceReplayEvent> {
+  if (!Array.isArray(events)) {
+    return { ok: false, error: "Episode history must be an event array.", status: 409 };
+  }
+  if (events.length >= 200) {
+    return {
+      ok: false,
+      error: "This episode has reached the 200-event limit. Start a new episode to keep the full log replayable.",
+      status: 409,
+    };
+  }
+
+  const next: ExperienceReplayEvent = {
+    ...candidate,
+    sequence: events.length + 1,
+    schemaVersion: 1,
+  };
+  const replay = replayExperienceEvents([...events, next], episodeMode);
+  if (!replay.ok) {
+    return {
+      ok: false,
+      error: "Event would make the episode log unreplayable: " + replay.error,
+      status: 422,
+    };
+  }
+  return { ok: true, value: next };
 }
 
 /** Load and replay one user's episode without changing its persisted event log. */
