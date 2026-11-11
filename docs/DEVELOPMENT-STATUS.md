@@ -14,6 +14,8 @@ Implemented on the implementation/digital-experience-loop-20261111 branch:
 - Added absolute prediction-error scoring, evidence-priority failure classification, and a fixed PD baseline.
 - Compared the fixed controller with a no-op on five deterministic held-out initial states; added a JSONL episode generator compatible with the Stage A event payloads.
 - Added deterministic read-only event replay with sequence, schema-version, action-reference, and closure checks; replay never executes proposed actions.
+- Validate action-related appends against prior proposal/approval/outcome records; reject orphan approvals, outcomes without approval, duplicate action IDs, and duplicate validations/outcomes before insertion.
+- Check event count against the maximum sequence and use an expected-sequence insert condition so stale concurrent appends fail with a conflict. Replay remains bounded to 200 events and rejects oversized histories without returning partial projections.
 - Added Vitest replay tests alongside event-schema tests, Python simulation tests, and SQLite migration tests.
 
 The simulator is a fixed baseline, not a learned policy. Route-level disposable-D1 tests, persistence verification across process restart, held-out evaluation isolation, and a learned policy/world model remain outstanding. The migration has not been applied to live D1; no model training or external actions were run.
