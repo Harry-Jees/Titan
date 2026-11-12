@@ -4,7 +4,10 @@ import {
   validateExperienceEvent,
   replayExperienceEvents,
   validateExperienceAppend,
+  listExperienceEvents,
+  parseExperienceEventPage,
 } from "../src/experiences";
+import type { Env } from "../src/types";
 
 describe("experience episode validation", () => {
   it("accepts a scoped simulation episode", () => {
@@ -333,5 +336,92 @@ describe("experience append integrity", () => {
       payload: { source: "sensor", state: { angle: 0.1 } },
     }, "simulation", [], 201);
     expect(laterObservation.ok).toBe(true);
+  });
+});
+
+
+describe("experience event pagination", () => {
+  const storedEvents = Array.from({ length: 5 }, (_, index) => ({
+    id: `event_${index + 1}`,
+    sequence: index + 1,
+    event_type: "observation" as const,
+    schema_version: 1,
+    occurred_at: "2026-11-13T00:00:00.000Z",
+    payload_json: JSON.stringify({
+      source: "sensor",
+      state: { angle: (index + 1) / 10 },
+    }),
+  }));
+
+  function fakeEnv(rows: typeof storedEvents, owner = "user_1") {
+    const DB = {
+      prepare(sql: string) {
+        let bindings: unknown[] = [];
+        return {
+          bind(...values: unknown[]) {
+            bindings = values;
+            return this;
+          },
+          async first() {
+            if (!sql.includes("FROM agent_experience_episodes")) return null;
+            const [userId, episodeId] = bindings;
+            return userId === owner && episodeId === "episode_0001"
+              ? { id: "episode_0001" }
+              : null;
+          },
+          async all() {
+            if (!sql.includes("FROM agent_experience_events")) return { results: [] };
+            const [userId, episodeId, after, limit] = bindings;
+            if (userId !== owner || episodeId !== "episode_0001") return { results: [] };
+            return {
+              results: rows
+                .filter((row) => row.sequence > Number(after))
+                .slice(0, Number(limit)),
+            };
+          },
+        };
+      },
+    };
+    return { DB } as unknown as Env;
+  }
+
+  it("uses safe defaults and rejects malformed or oversized cursors", () => {
+    expect(parseExperienceEventPage(null, null)).toEqual({
+      ok: true,
+      value: { after: 0, limit: 200 },
+    });
+    expect(parseExperienceEventPage("-1", "20").ok).toBe(false);
+    expect(parseExperienceEventPage("1.5", "20").ok).toBe(false);
+    expect(parseExperienceEventPage("9007199254740992", "20").ok).toBe(false);
+    expect(parseExperienceEventPage("0", "0").ok).toBe(false);
+    expect(parseExperienceEventPage("0", "201").ok).toBe(false);
+    expect(parseExperienceEventPage("0", "01").ok).toBe(false);
+  });
+
+  it("returns stable forward pages without dropping later events", async () => {
+    const env = fakeEnv(storedEvents);
+
+    const first = await listExperienceEvents(env, "user_1", "episode_0001", { after: 0, limit: 2 });
+    expect(first?.events.map((event) => event.sequence)).toEqual([1, 2]);
+    expect(first?.pagination).toEqual({ after: 0, limit: 2, nextAfter: 2, hasMore: true });
+
+    const second = await listExperienceEvents(env, "user_1", "episode_0001", { after: 2, limit: 2 });
+    expect(second?.events.map((event) => event.sequence)).toEqual([3, 4]);
+    expect(second?.pagination).toEqual({ after: 2, limit: 2, nextAfter: 4, hasMore: true });
+
+    const final = await listExperienceEvents(env, "user_1", "episode_0001", { after: 4, limit: 2 });
+    expect(final?.events.map((event) => event.sequence)).toEqual([5]);
+    expect(final?.pagination).toEqual({ after: 4, limit: 2, nextAfter: 5, hasMore: false });
+  });
+
+  it("keeps an empty-page cursor stable and enforces episode ownership", async () => {
+    const env = fakeEnv(storedEvents);
+
+    const empty = await listExperienceEvents(env, "user_1", "episode_0001", { after: 5, limit: 2 });
+    expect(empty?.events).toEqual([]);
+    expect(empty?.pagination).toEqual({ after: 5, limit: 2, nextAfter: 5, hasMore: false });
+
+    const hidden = await listExperienceEvents(env, "user_2", "episode_0001", { after: 0, limit: 2 });
+    expect(hidden).toBeNull();
   });
 });

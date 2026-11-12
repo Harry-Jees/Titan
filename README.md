@@ -54,6 +54,7 @@ Keep secrets out of source control. Titan must not use Cloudflare Workers AI or 
 - POST /tools/provision — validate and save a per-user tool; credentials are AES-GCM encrypted
 - DELETE /tools?name=...
 - GET /experiences/episodes/:id/replay — deterministic read-only projection; never executes actions
+- GET /experiences/episodes/:id/events?after=0&limit=200 — sequence-cursor event pages (limit 1–200; `nextAfter` is exclusive)
 - GET /training/preferences, POST /training/preferences — explicit user opt-in/out
 - GET /training/examples, DELETE /training/examples?id=... — view or delete your own curation examples
 - GET /training/examples/export — export only your own approved examples as JSONL
