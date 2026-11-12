@@ -355,7 +355,51 @@ export async function appendExperienceEvent(
   return { ok: true, value: { id, sequence: row.sequence, type: event.type, occurredAt: event.occurredAt } };
 }
 
-export async function listExperienceEvents(env: Env, userId: string, episodeId: string) {
+export interface ExperienceEventPageRequest {
+  after: number;
+  limit: number;
+}
+
+export interface ExperienceEventPage {
+  events: ExperienceReplayEvent[];
+  pagination: {
+    after: number;
+    limit: number;
+    nextAfter: number;
+    hasMore: boolean;
+  };
+}
+
+export function parseExperienceEventPage(
+  afterValue: string | null,
+  limitValue: string | null,
+): Validation<ExperienceEventPageRequest> {
+  const parseInteger = (value: string | null, fallback: number): number | null => {
+    if (value === null) return fallback;
+    if (!/^(0|[1-9][0-9]*)$/.test(value)) return null;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) ? parsed : null;
+  };
+
+  const after = parseInteger(afterValue, 0);
+  if (after === null) {
+    return { ok: false, error: "after must be a non-negative safe integer." };
+  }
+
+  const limit = parseInteger(limitValue, 200);
+  if (limit === null || limit < 1 || limit > 200) {
+    return { ok: false, error: "limit must be a whole number from 1 to 200." };
+  }
+
+  return { ok: true, value: { after, limit } };
+}
+
+export async function listExperienceEvents(
+  env: Env,
+  userId: string,
+  episodeId: string,
+  page: ExperienceEventPageRequest = { after: 0, limit: 200 },
+): Promise<ExperienceEventPage | null> {
   const episode = await env.DB.prepare(
     "SELECT id FROM agent_experience_episodes WHERE user_id=? AND id=?"
   ).bind(userId, episodeId).first<{ id: string }>();
@@ -363,13 +407,17 @@ export async function listExperienceEvents(env: Env, userId: string, episodeId: 
 
   const result = await env.DB.prepare(
     "SELECT id,sequence,event_type,schema_version,occurred_at,payload_json " +
-    "FROM agent_experience_events WHERE user_id=? AND episode_id=? ORDER BY sequence ASC LIMIT 200"
-  ).bind(userId, episodeId).all<{
+    "FROM agent_experience_events WHERE user_id=? AND episode_id=? AND sequence>? " +
+    "ORDER BY sequence ASC LIMIT ?"
+  ).bind(userId, episodeId, page.after, page.limit + 1).all<{
     id: string; sequence: number; event_type: ExperienceEventType;
     schema_version: number; occurred_at: string; payload_json: string;
   }>();
 
-  return (result.results || []).map((row) => ({
+  const rows = result.results || [];
+  const hasMore = rows.length > page.limit;
+  const selectedRows = rows.slice(0, page.limit);
+  const events = selectedRows.map((row) => ({
     id: row.id,
     sequence: row.sequence,
     type: row.event_type,
@@ -377,6 +425,17 @@ export async function listExperienceEvents(env: Env, userId: string, episodeId: 
     occurredAt: row.occurred_at,
     payload: JSON.parse(row.payload_json) as Record<string, unknown>,
   }));
+  const nextAfter = events.length ? events[events.length - 1].sequence : page.after;
+
+  return {
+    events,
+    pagination: {
+      after: page.after,
+      limit: page.limit,
+      nextAfter,
+      hasMore,
+    },
+  };
 }
 
 
