@@ -18,7 +18,9 @@ export function robotsAllows(body:string,path:string):boolean{
  if(key==="user-agent"){if(!current||current.rules.length){current={agents:[],rules:[]};groups.push(current);}current.agents.push(value.toLowerCase());}
  else if((key==="allow"||key==="disallow")&&current&&value)current.rules.push({allow:key==="allow",path:value});}
  const rules=groups.filter(g=>g.agents.some(a=>a==="*"||USER_AGENT.toLowerCase().includes(a))).flatMap(g=>g.rules);
- const match=rules.filter(r=>path.startsWith(r.path)).sort((a,b)=>b.path.length-a.path.length);return !match.length||match[0].allow;
+ const matches=rules.filter(rule=>{const anchored=rule.path.endsWith("$"),pattern=anchored?rule.path.slice(0,-1):rule.path;const escaped=pattern.split("*").map(part=>part.replace(/[.+?^${}()|[\\]\\\\]/g,"\\\\ const rules=groups.filter(g=>g.agents.some(a=>a==="*"||USER_AGENT.toLowerCase().includes(a))).flatMap(g=>g.rules);
+ const match=rules.filter(r=>path.startsWith(r.path)).sort((a,b)=>b.path.length-a.path.length);return !match.length||match[0].allow;")).join(".*");return new RegExp("^"+escaped+(anchored?"$":"")).test(path);}).sort((a,b)=>b.path.replace(/\\*/g,"").length-a.path.replace(/\\*/g,"").length||Number(b.allow)-Number(a.allow));
+ return !matches.length||matches[0].allow;
 }
 function decodeEntities(s:string):string{return s.replace(/&nbsp;/gi," ").replace(/&amp;/gi,"&").replace(/&lt;/gi,"<").replace(/&gt;/gi,">").replace(/&quot;/gi,'"').replace(/&#39;/gi,"'").replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(Number(n))).replace(/&#x([0-9a-f]+);/gi,(_,n)=>String.fromCodePoint(parseInt(n,16)));}
 function plainText(html:string):string{return decodeEntities(html.replace(/<\s*(script|style|noscript|svg|nav|footer|header|form|aside)[^>]*>[\s\S]*?<\/\s*\1\s*>/gi," ").replace(/<!--([\s\S]*?)-->/g," ").replace(/<[^>]+>/g," ").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g," ").replace(/\s+/g," ")).trim();}
