@@ -23,7 +23,7 @@ export async function indexKnowledgeChunk(env:Env,input:{sourceUrl:string;title:
  const content=input.content.trim().slice(0,5000);if(!content||!/^https?:\/\//.test(input.sourceUrl))return false;
  const contentHash=await sha256(input.sourceUrl+"\n"+(input.kind||"source")+"\n"+content);let embeddingJson:string|null=null;
  try{const [vector]=await embedTexts(env,[content.slice(0,3500)],bucket,bucketLimit);embeddingJson=encodeVector(vector);}catch{/* retain lexical knowledge */}
- const result=await env.DB.prepare("INSERT OR IGNORE INTO knowledge_chunks(id,source_url,title,content,content_hash,summary,topics_json,kind,embedding_json,embedding_model,source_hash,quality_score) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)")
+ const result=await env.DB.prepare("INSERT OR IGNORE INTO knowledge_units(id,source_url,title,content,content_hash,summary,topics_json,kind,embedding_json,embedding_model,source_hash,quality_score) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)")
  .bind(crypto.randomUUID(),input.sourceUrl.slice(0,2048),input.title.slice(0,300),content,contentHash,(input.summary||"").slice(0,1600),
  JSON.stringify((input.topics||[]).slice(0,10)),input.kind||"source",embeddingJson,embeddingJson?"@cf/baai/bge-m3":null,input.sourceHash||"",Math.max(0,Math.min(1,input.qualityScore??0.5))).run();
  return (result.meta.changes||0)>0;
@@ -55,7 +55,7 @@ export async function learnFromPage(env:Env,page:ResearchPage,runId:string):Prom
  let chunksAdded=0;
  for(let i=0;i<bounded.length;i++){
   const unit=bounded[i],hash=await sha256(page.canonicalUrl+"\n"+unit.kind+"\n"+unit.content);
-  const inserted=await env.DB.prepare("INSERT OR IGNORE INTO knowledge_chunks(id,source_url,title,content,content_hash,summary,topics_json,kind,embedding_json,embedding_model,source_hash,quality_score) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)")
+  const inserted=await env.DB.prepare("INSERT OR IGNORE INTO knowledge_units(id,source_url,title,content,content_hash,summary,topics_json,kind,embedding_json,embedding_model,source_hash,quality_score) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)")
    .bind(crypto.randomUUID(),page.canonicalUrl,page.title,unit.content,hash,analysis.summary,JSON.stringify(analysis.topics),unit.kind,
     vectors[i]?encodeVector(vectors[i]):null,vectors[i]?"@cf/baai/bge-m3":null,page.contentHash,analysis.quality_score??0.5).run();
   chunksAdded+=inserted.meta.changes||0;
@@ -82,17 +82,22 @@ export async function retrieveKnowledge(env:Env,query:string):Promise<{context:s
  if(terms.length){
   const match=terms.map(t=>'"'+t.replace(/"/g,'""')+'"').join(" OR ");
   try{
-   const rows=await env.DB.prepare("SELECT k.id,k.source_url,k.title,k.content,k.summary,k.kind,bm25(knowledge_chunks_fts) AS rank FROM knowledge_chunks_fts JOIN knowledge_chunks k ON k.rowid=knowledge_chunks_fts.rowid WHERE knowledge_chunks_fts MATCH ? ORDER BY rank LIMIT 30").bind(match).all<any>();
+   const rows=await env.DB.prepare("SELECT k.id,k.source_url,k.title,k.content,k.summary,k.kind,bm25(knowledge_units_fts) AS rank FROM knowledge_units_fts JOIN knowledge_units k ON k.rowid=knowledge_units_fts.rowid WHERE knowledge_units_fts MATCH ? ORDER BY rank LIMIT 30").bind(match).all<any>();
    for(const row of rows.results||[])candidates.set(row.id,{...row,score:0.25/(1+Math.abs(Number(row.rank||0)))});
   }catch{
    const where=terms.map(()=>"content LIKE ? OR title LIKE ?").join(" OR "),likes=terms.flatMap(t=>["%"+t+"%","%"+t+"%"]);
-   const rows=await env.DB.prepare("SELECT id,source_url,title,content,summary,kind FROM knowledge_chunks WHERE "+where+" ORDER BY created_at DESC LIMIT 20").bind(...likes).all<any>();
+   let rows:any;
+   try {
+    rows=await env.DB.prepare("SELECT id,source_url,title,content,summary,kind FROM knowledge_units WHERE "+where+" ORDER BY created_at DESC LIMIT 20").bind(...likes).all<any>();
+   } catch {
+    rows=await env.DB.prepare("SELECT id,source_url,title,content,'' AS summary,'legacy' AS kind FROM knowledge_chunks WHERE "+where+" ORDER BY created_at DESC LIMIT 20").bind(...likes).all<any>();
+   }
    for(const row of rows.results||[])candidates.set(row.id,{...row,score:0.1});
   }
  }
  try{
   const [queryVector]=await embedTexts(env,[query.slice(0,3000)],"chat",2000);
-  const recent=await env.DB.prepare("SELECT id,source_url,title,content,summary,kind,embedding_json FROM knowledge_chunks WHERE embedding_json IS NOT NULL ORDER BY created_at DESC LIMIT 250").all<any>();
+  const recent=await env.DB.prepare("SELECT id,source_url,title,content,summary,kind,embedding_json FROM knowledge_units WHERE embedding_json IS NOT NULL ORDER BY created_at DESC LIMIT 250").all<any>();
   for(const row of recent.results||[]){const vector=decodeVector(String(row.embedding_json||""));if(!vector.length)continue;
    const score=Math.max(0,cosineSimilarity(queryVector,vector))*0.75+(candidates.get(row.id)?.score||0);
    candidates.set(row.id,{...row,score});}
