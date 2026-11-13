@@ -5,9 +5,9 @@ const OUTPUT_NEURONS_PER_TOKEN = 27273 / 1_000_000;
 const EMBEDDING_NEURONS_PER_TOKEN = INPUT_NEURONS_PER_TOKEN; // conservative ceiling
 
 /** Reserve against Cloudflare's 10,000-neuron free daily allocation before inference. */
-export async function reserveAiNeurons(env: Env, inputCharacters: number, outputTokens: number,
+export async function reserveAiNeurons(env: Env, inputBytes: number, outputTokens: number,
   bucket = "chat", bucketLimit = 2000, embedding = false): Promise<boolean> {
-  const estimatedInputTokens = Math.ceil(Math.max(0, inputCharacters) / 2);
+  const estimatedInputTokens = Math.ceil(Math.max(0, inputBytes) / 2);
   const neurons = Math.max(1, Math.ceil(
     estimatedInputTokens * (embedding ? EMBEDDING_NEURONS_PER_TOKEN : INPUT_NEURONS_PER_TOKEN) +
     (embedding ? 0 : Math.max(0, outputTokens) * OUTPUT_NEURONS_PER_TOKEN),
