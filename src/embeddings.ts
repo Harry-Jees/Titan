@@ -5,9 +5,10 @@ export const EMBEDDING_DIMENSIONS = 1024;
 export async function embedTexts(env:Env,texts:string[],bucket="chat",bucketLimit=2000):Promise<number[][]>{
  if(!texts.length)return [];
  if(!env.AI)throw new Error("Titan AI binding is missing; semantic embeddings are unavailable.");
- const length=texts.reduce((sum,text)=>sum+text.length,0);
+ const boundedTexts=texts.map(text=>text.slice(0,1000));
+ const length=boundedTexts.reduce((sum,text)=>sum+text.length,0);
  if(!await reserveAiNeurons(env,length,0,bucket,bucketLimit,true))throw new Error("Titan reached its protected daily embedding budget. No paid fallback was attempted.");
- const result=await env.AI.run(EMBEDDING_MODEL,{text:texts} as any) as any;
+ const result=await env.AI.run(EMBEDDING_MODEL,{text:boundedTexts} as any) as any;
  const rows=result?.data??result?.embeddings??result?.vectors??result?.embedding;
  if(!Array.isArray(rows))throw new Error("Embedding model returned an unsupported response shape.");
  const vectors=Array.isArray(rows[0])?rows:[rows],normalized=vectors.map((row:unknown[])=>row.map(Number));
