@@ -10,7 +10,7 @@ Titan is a separate, cloud-first personal agent. This repository contains a port
 - GPT-OSS-20B reasoning through Workers AI, protected by a conservative daily free-neuron reservation budget
 - BGE-M3 embeddings and hybrid D1 FTS5 + vector RAG
 - Robots-aware public research crawler and source-attributed chunking
-- Opt-in conversation curation; candidate LoRA training is separate and manual
+- Evidence-only RAG-to-LoRA candidate training with a local GPU watcher; no hosted training or automatic promotion
 - PR-only self-build workflow; no auto-merge. The separate public Worker auto-deploys only from `development/titan-foundation`.
 
 ## Local development
@@ -71,7 +71,7 @@ Registered tools can be selected by the model and run with strict parameter allo
 ## Research and learning schedules
 - **06:00 AM and 06:00 PM IST:** native Cloudflare Worker Cron Triggers start durable 30-minute research workflows. GPT-OSS converts pages into evidence-backed facts, concepts and concise knowledge units; BGE-M3 embeddings and FTS5 power hybrid RAG. GitHub Actions do not trigger research.
 - **09:00 AM IST (03:30 UTC):** separate D1 curation worker. It processes only conversations from users who explicitly enable training_preferences, screens sensitive data, grades at most eight pairs and stores candidates. It does not update model weights.
-- **Candidate LoRA training:** manual and separate. Teacher API calls may incur costs; GPU availability and model downloads are not guaranteed free. Candidates must pass held-out capability and safety checks and require human review. No adapter is automatically promoted, merged or deployed.
+- **Candidate LoRA training:** the local watcher checks the RAG corpus every six hours and starts training only after evidence-count, source-diversity and local CUDA preflight thresholds pass. It trains and evaluates a candidate on the local machine; it never provisions a hosted GPU, calls a paid teacher API, or auto-promotes/deploys weights. The current Qwen student adapter does not modify GPT-OSS-20B.
 
 Crawling must respect source terms, robots rules, copyright, privacy and applicable law.
 
