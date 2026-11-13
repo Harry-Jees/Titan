@@ -99,3 +99,9 @@ CREATE TRIGGER IF NOT EXISTS knowledge_units_fts_update AFTER UPDATE ON knowledg
  VALUES('delete',old.rowid,old.title,old.content,old.summary);
  INSERT INTO knowledge_units_fts(rowid,title,content,summary) VALUES(new.rowid,new.title,new.content,new.summary);
 END;
+
+CREATE TABLE IF NOT EXISTS titan_semantic_migrations (
+ name TEXT PRIMARY KEY,
+ applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT OR IGNORE INTO titan_semantic_migrations(name) VALUES('0009_semantic_learning.sql');
