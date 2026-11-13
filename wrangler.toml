@@ -4,9 +4,19 @@ preview_urls = false
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
 
-
 [[d1_databases]]
 binding = "DB"
 database_name = "titan-memory"
 database_id = "a845bcf3-5e8b-4ac3-aa24-fcd7396f743f"
 
+[ai]
+binding = "AI"
+
+[[workflows]]
+name = "titan-research-workflow"
+binding = "RESEARCH_WORKFLOW"
+class_name = "TitanResearchWorkflow"
+
+[triggers]
+# 06:00 and 18:00 India Standard Time (UTC+5:30).
+crons = ["30 0 * * *", "30 12 * * *"]

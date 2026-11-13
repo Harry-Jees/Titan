@@ -198,5 +198,25 @@ class MigrationTests(unittest.TestCase):
         db.close()
 
 
+    def test_semantic_learning_schema_and_full_text_index(self):
+        db = sqlite3.connect(":memory:")
+        apply_repository_migrations(db)
+        columns = {row[1] for row in db.execute("PRAGMA table_info(knowledge_units)")}
+        self.assertTrue({"summary", "topics_json", "kind", "embedding_json", "source_hash", "quality_score"}.issubset(columns))
+        for table in ("knowledge_facts", "knowledge_evidence", "research_pages", "research_runs",
+                      "research_frontier", "research_robots", "ai_daily_usage", "titan_semantic_migrations"):
+            self.assertIsNotNone(db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone())
+        db.execute(
+            "INSERT INTO knowledge_units(id,source_url,title,content,content_hash,summary) VALUES(?,?,?,?,?,?)",
+            ("semantic-1", "https://example.org/ai", "Semantic retrieval", "Vector embeddings improve semantic search across related concepts.", "hash-1", "Semantic retrieval overview"),
+        )
+        matches = db.execute(
+            "SELECT k.id FROM knowledge_units_fts f JOIN knowledge_units k ON k.rowid=f.rowid WHERE knowledge_units_fts MATCH ?",
+            ("embeddings",),
+        ).fetchall()
+        self.assertEqual(matches, [("semantic-1",)])
+        db.close()
+
+
 if __name__ == "__main__":
     unittest.main()

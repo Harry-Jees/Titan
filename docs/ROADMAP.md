@@ -34,10 +34,13 @@
 - [ ] Verify auth-map rotation, token lifecycle, rate limiting and abuse controls
 - [ ] Stage-test all migrations against a disposable copy of the live D1 schema
 - [ ] Port any remaining live-only gateway behavior
-- [ ] Semantic/vector retrieval after confirming current Cloudflare plan and API support
+- [x] GPT-OSS-20B reasoning adapter with daily free-neuron budget guard (branch implementation)
+- [x] BGE-M3 semantic embeddings + D1 FTS5 hybrid RAG (branch implementation)
+- [x] Twice-daily native Worker Cron + durable 30-minute research Workflow (branch implementation)
+- [ ] Deploy and verify migration 0009, AI binding, Workflow binding and Cron Triggers
 - [ ] Broader independent evaluations for factuality, reasoning, coding, tool use, privacy and adversarial behavior
 - [ ] Human-reviewed candidate adapter promotion only after evaluation; never auto-deploy weights
 
 ## Safety and cost boundaries
 
-No live Worker, D1 database, secret or schedule is modified by this repository work. The new experience migration is additive and is only tested in disposable SQLite/CI environments. The experience API records proposals and observations; it does not execute external or physical actions. The toy balance simulator runs locally using the Python standard library. The scheduled noon research workflow does not call a teacher model. Conversation curation is opt-in and stores candidates only. Teacher calls and GPU training remain separate, manual and budget-dependent. All production integration requires staging, review and explicit approval.
+No live Worker, D1 database, secret or schedule is modified by this repository work. The new experience migration is additive and is only tested in disposable SQLite/CI environments. The experience API records proposals and observations; it does not execute external or physical actions. The toy balance simulator runs locally using the Python standard library. The proposed twice-daily native Worker research workflow uses the capped GPT-OSS inference budget; candidate fine-tuning remains separate and manual. Conversation curation is opt-in and stores candidates only. Teacher calls and GPU training remain separate, manual and budget-dependent. All production integration requires staging, review and explicit approval.

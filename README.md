@@ -1,15 +1,17 @@
 # Titan — personal autonomous AI agent
 
-Titan is a separate, cloud-first personal agent. This repository contains a portable Cloudflare Workers foundation for chat, persistent memory, API tools, opt-in conversation curation, source-attributed knowledge, research automation, evaluation and bounded self-building.
+Titan is a separate, cloud-first personal agent. This repository contains a portable Cloudflare Workers foundation for chat, persistent memory, API tools, opt-in conversation curation, source-attributed knowledge, autonomous research, evaluation and bounded self-building.
 
 **Deployment boundary:** the public preview runs as a separate Worker at [titan-ai-core.harryjees.workers.dev](https://titan-ai-core.harryjees.workers.dev/). It does not replace the existing live `titan-agent-api` or `titan-training-pipeline`. It reuses the existing `titan-memory` D1 database and creates only additive public-session and knowledge tables; existing rows and secrets are not rewritten.
 
 ## Stack
 - Cloudflare Workers + TypeScript
-- Cloudflare D1 for memory, conversations, knowledge, tool registry, approvals, audit, quotas and training records
-- Configurable OpenAI-compatible inference with Workers AI fallback
+- Cloudflare D1 for the current prototype's memory, conversations, knowledge, tool registry, approvals, audit and quotas
+- GPT-OSS-20B reasoning through Workers AI, protected by a conservative daily free-neuron reservation budget
+- BGE-M3 embeddings and hybrid D1 FTS5 + vector RAG
 - Robots-aware public research crawler and source-attributed chunking
-- Opt-in conversation curation; candidate LoRA training is separate and manual
+- **RAG is Titan's primary long-term learning system.** It stores versioned, evidence-backed knowledge outside model weights and retrieves only relevant context at answer time.
+- **LoRA training is optional experimentation only.** Titan does not require training, a local GPU, or model-weight updates to learn and use new information.
 - PR-only self-build workflow; no auto-merge. The separate public Worker auto-deploys only from `development/titan-foundation`.
 
 ## Local development
@@ -21,7 +23,7 @@ Requirements: Node.js 20+, npm, Python 3.11+.
     npm test
     python -m pytest -q
 
-Apply migrations 0001 through 0007 in numeric order to a **development** D1 database. The schemas are aligned with the current live Titan D1 table shapes, but must still be applied to a staging copy first. Do not run them against the live database from this repository.
+Apply migrations 0001 through 0009 in numeric order to a **disposable development** D1 database. The schemas are aligned with the current live Titan D1 table shapes, but must still be applied to a staging copy first. Do not run them against the live database from this repository.
 
 ## Worker configuration
 Main Worker: wrangler.toml, entry src/index.ts.
@@ -30,7 +32,7 @@ Separate opt-in curation Worker: wrangler.training.toml, entry src/training-pipe
 
 `wrangler.toml` binds the existing `titan-memory` D1 database for the isolated public preview. `wrangler.training.toml` remains a separate configuration; use a development database ID for local/staging training tests.
 
-Required bindings: DB (D1) and AI (Workers AI).
+Required bindings: DB (D1), AI (Workers AI), and RESEARCH_WORKFLOW (Cloudflare Workflows).
 
 Optional secrets/vars:
 - TITAN_ADMIN_TOKEN
@@ -41,9 +43,9 @@ Optional secrets/vars:
 - TITAN_TOOL_HOST_ALLOWLIST (comma-separated exact trusted hostnames; no wildcards)
 - TITAN_TOOL_SECRET_* (optional Worker secrets referenced by server-managed tool definitions only)
 - TITAN_DAILY_REQUEST_LIMIT (default 200 per user per UTC day)
-- TITAN_TRAINING_CRON_SECRET (optional HTTP trigger secret for the training worker)
+- TITAN_TRAINING_CRON_SECRET (optional HTTP trigger secret for the optional training worker)
 
-Keep secrets out of source control. Titan must not use Cloudflare Workers AI or any hosted inference API. The Workers AI binding and automatic fallback have been removed. Chat remains unavailable until Titan's own local model runtime is ready; this prevents surprise cloud-credit usage.
+Keep secrets out of source control. The semantic-learning branch connects GPT-OSS-20B and BGE-M3 through the Worker AI binding. Titan reserves against a conservative 7,000-neuron daily estimate out of the documented 10,000 free Workers AI neurons per UTC day and has no paid-model fallback. Other Workers AI workloads in the same account share the free allocation. The live Worker is not updated by a branch push; apply the pending repository D1 migrations and deploy the reviewed branch before expecting this inference path to work. The live D1 ledger currently records only 0001–0002; CI includes a compatibility test against the observed live table shape.
 
 ## API
 - GET /health
@@ -55,9 +57,11 @@ Keep secrets out of source control. Titan must not use Cloudflare Workers AI or 
 - DELETE /tools?name=...
 - GET /experiences/episodes/:id/replay — deterministic read-only projection; never executes actions
 - GET /experiences/episodes/:id/events?after=0&limit=200 — sequence-cursor event pages (limit 1–200; `nextAfter` is exclusive)
+- GET /research/status and POST /research/run — admin-only research status and one-off test run
 - GET /training/preferences, POST /training/preferences — explicit user opt-in/out
 - GET /training/examples, DELETE /training/examples?id=... — view or delete your own curation examples
 - GET /training/examples/export — export only your own approved examples as JSONL
+- POST /training/rag-export — admin-only export of evidence-backed public RAG facts for optional local experiments
 - POST /training/examples/review — approve/reject one of your own candidate examples
 - POST /knowledge, GET /knowledge?q=... (admin token)
 - POST /evaluate (admin token)
@@ -67,11 +71,17 @@ Conversation history is loaded server-side and scoped to the bearer namespace; c
 Registered tools can be selected by the model and run with strict parameter allowlists. Provisioning and execution fail closed unless the target hostname exactly matches TITAN_TOOL_HOST_ALLOWLIST; do not add user-controlled domains, redirectors or untrusted hosts. Server-managed tools may reference only dedicated TITAN_TOOL_SECRET_* bindings, never general model, auth or admin secrets. POST tools create a 10-minute, single-use approval bound to a fingerprint of the tool definition; changing the tool invalidates the pending approval. Tool calls are audited. External tool metadata and responses are treated as untrusted data.
 
 ## Research and learning schedules
-- **12:00 PM IST (06:30 UTC):** GitHub Actions daily research workflow. It crawls public sitemaps with robots-aware access, host pacing and bounded downloads, plans coverage gaps, creates source-attributed chunks and uploads a cycle artifact. It does not call a teacher model or fine-tune.
-- **09:00 AM IST (03:30 UTC):** separate D1 curation worker. It processes only conversations from users who explicitly enable training_preferences, screens sensitive data, grades at most eight pairs and stores candidates. It does not update model weights.
-- **Candidate LoRA training:** manual and separate. Teacher API calls may incur costs; GPU availability and model downloads are not guaranteed free. Candidates must pass held-out capability and safety checks and require human review. No adapter is automatically promoted, merged or deployed.
+- **06:00 AM and 06:00 PM IST:** native Cloudflare Worker Cron Triggers start durable 30-minute research workflows. GPT-OSS converts pages into evidence-backed facts, concepts and concise knowledge units; BGE-M3 embeddings and FTS5 power hybrid RAG. GitHub Actions do not trigger research.
+- **09:00 AM IST (03:30 UTC):** separate D1 curation worker. It processes only conversations from users who explicitly enable `training_preferences`, screens sensitive data, grades at most eight pairs and stores candidates. It does not update model weights.
+- **No training dependency:** the research → extraction → indexing → retrieval loop is the complete learning path. LoRA candidate training is an optional, separately invoked local experiment; Titan remains fully usable when no training machine exists.
 
 Crawling must respect source terms, robots rules, copyright, privacy and applicable law.
+
+## RAG scale and performance
+
+The current D1 FTS5 + cosine implementation is a functional prototype, **not a billion-page production index**. See [docs/RAG-SCALING-ARCHITECTURE.md](docs/RAG-SCALING-ARCHITECTURE.md) for the scale-out design. The key invariant is that query-time work is bounded: route to relevant partitions, retrieve a small candidate set using hybrid indexes, rerank only those candidates, and send a compact evidence pack to the reasoning model. Never scan the corpus or place the entire corpus in a prompt.
+
+The design separates raw source storage, metadata, lexical indexes, vector indexes and derived knowledge. It supports incremental ingestion, deduplication, hierarchical routing, sharding, replicas, caching, selective graph retrieval and gradual migration from the current D1 prototype. Billions of pages are an architectural target, not a claim about the current deployment or free-tier capacity.
 
 ## Self-building
 The self-build workflow is manual and bounded. It only proposes changes in approved source/test/docs paths, runs checks and opens a PR for human review. It cannot edit workflows, dependencies, secrets, deployment configuration or migrations, and never auto-merges.

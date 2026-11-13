@@ -13,3 +13,6 @@ training/cycle_candidates.jsonl
 training/curated.jsonl
 training/heldout.jsonl
 training/eval_report.json
+training/auto_curated.jsonl
+training/auto_train_state.json
+training/auto_curated.jsonl.tmp
