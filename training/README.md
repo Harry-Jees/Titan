@@ -51,3 +51,49 @@ Conversation curation is disabled by default. A user must enable training in the
 The default base revision is pinned to 7ae557604adf67be50417f59c2c2f167def9a775. If TITAN_BASE_MODEL is changed, set TITAN_BASE_MODEL_REVISION to that repository's immutable 40-character commit SHA; floating branches and tags are rejected. The training sample is sorted and then shuffled with the configured seed before applying the row cap, so reordering the JSONL file does not change the selected sample.
 
 The evaluator verifies the candidate manifest against the exact base model, base revision and held-out dataset SHA-256 before loading either model. Promotion thresholds must be finite values in the inclusive range 0–1. These checks improve reproducibility and prevent accidental mismatched comparisons; they do not replace human review or independent safety evaluation.
+
+## Automatic RAG-to-LoRA training (local runner)
+
+The core Worker exposes an authenticated `POST /training/rag-export` endpoint.
+It exports only public, evidence-backed, non-conflicting RAG facts with their
+source URL, exact supporting quote, source excerpt and SHA-256 digest. It does
+not export user conversations or unresolved contradictory facts.
+
+On a machine you control, install the optional training dependencies from
+`training/requirements.txt`, make sure CUDA and at least 8 GiB GPU VRAM are
+available, then set:
+
+```bash
+export TITAN_TRAINING_EXPORT_URL="https://YOUR-TITAN-WORKER/training/rag-export"
+export TITAN_ADMIN_TOKEN="YOUR_EXISTING_TITAN_ADMIN_TOKEN"
+python training/auto_train.py --watch
+```
+
+The runner polls every six hours by default. It starts a local training cycle
+only after at least 100 unique grounded examples from at least 10 source
+domains exist and at least 20 genuinely new examples have arrived since the
+last successful cycle. Thresholds can be raised with
+`TITAN_AUTO_MIN_EXAMPLES`, `TITAN_AUTO_MIN_DOMAINS`, and
+`TITAN_AUTO_MIN_NEW_EXAMPLES`.
+
+The runner performs a read-only compute preflight first. It requires a local
+CUDA GPU with at least 8 GiB VRAM, sufficient disk, validated data and the
+training packages. If these are unavailable, it skips training; it never
+provisions a hosted GPU, enables a paid teacher API, or falls back to paid
+compute. It trains a local candidate adapter and runs the held-out evaluator.
+A passing adapter is still only a candidate: this runner does not upload,
+deploy, or promote weights automatically.
+
+**Important model boundary:** the current training default is Qwen2.5-0.5B,
+while Titan's deployed reasoning model is GPT-OSS-20B. A Qwen adapter does not
+modify or attach to GPT-OSS. Cloudflare's current Workers AI LoRA inference
+support accepts compatible Llama, Gemma or Mistral adapter families; it does
+not turn Workers AI into a training service. The current local runner therefore
+produces a separate experimental student adapter. Selecting a compatible
+Cloudflare LoRA base and adding an approved deployment route is a separate
+reviewed change, not an automatic weight swap.
+
+The local runner is intentionally opt-in because it requires a machine to be
+online. Starting it once with `--watch` keeps it monitoring; it does not run
+when that computer is off. No GitHub Actions workflow is used for recurring
+research or local model training.
