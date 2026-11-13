@@ -14,6 +14,7 @@ describe("Titan GPT-OSS inference boundary",()=>{
   expect(calls).toHaveLength(1);
   expect(calls[0].model).toBe("@cf/openai/gpt-oss-20b");
   expect(calls[0].input.max_tokens).toBe(1200);
+  expect(calls[0].input.response_format).toBeUndefined();
  });
  it("fails closed when the protected free-inference budget is exhausted",async()=>{
   let calls=0;
