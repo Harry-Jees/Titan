@@ -12,6 +12,7 @@ import hashlib
 import ipaddress
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -27,6 +28,14 @@ MIN_EXAMPLES = max(20, int(os.environ.get("TITAN_AUTO_MIN_EXAMPLES", "100")))
 MIN_NEW_EXAMPLES = max(1, int(os.environ.get("TITAN_AUTO_MIN_NEW_EXAMPLES", "20")))
 MIN_SOURCE_DOMAINS = max(1, int(os.environ.get("TITAN_AUTO_MIN_DOMAINS", "10")))
 POLL_SECONDS = max(900, int(os.environ.get("TITAN_AUTO_POLL_SECONDS", "21600")))
+SENSITIVE_PATTERNS = [
+    re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", re.I),
+    re.compile(r"\\b(?:\\+?\\d[\\d ()-]{8,}\\d)\\b"),
+    re.compile(r"\\b(?:\\d[ -]*?){13,19}\\b"),
+    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----", re.I),
+    re.compile(r"\\b(?:sk-[A-Za-z0-9]{20,}|gh[pousr]_[A-Za-z0-9]{20,})\\b"),
+    re.compile(r"\\bBearer\\s+[A-Za-z0-9._~+/-]{24,}", re.I),
+]
 
 
 def request_export() -> list[dict]:
@@ -88,6 +97,8 @@ def build_dataset(exported: list[dict]) -> list[dict]:
         if not is_public_source(source) or not quote or len(subject) < 12 or len(response) < 30 or len(excerpt) < 200:
             continue
         if normalize(quote) not in normalize(excerpt) or normalize(quote) not in normalize(response):
+            continue
+        if any(pattern.search(subject + "\\n" + response) for pattern in SENSITIVE_PATTERNS):
             continue
         if hashlib.sha256(excerpt.encode("utf-8")).hexdigest() != digest:
             continue
