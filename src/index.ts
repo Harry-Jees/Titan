@@ -50,7 +50,7 @@ export default {
           "FROM knowledge_facts f " +
           "INNER JOIN knowledge_evidence e ON e.fact_id=f.id " +
           "INNER JOIN knowledge_units k ON k.source_url=e.source_url " +
-          "WHERE f.status='evidence-backed' AND f.confidence>=0.75 " +
+          "WHERE f.status='evidence-backed' AND f.confidence>=0.75 AND k.kind='fact' " +
           "ORDER BY f.updated_at DESC,e.created_at DESC LIMIT 1000"
         ).all<{ subject:string;predicate:string;object:string;confidence:number;source_url:string;quote:string;title:string;content:string }>();
         const rows = (result.results || []).flatMap(row => {
@@ -58,7 +58,7 @@ export default {
           const excerpt = String(row.content || "").slice(0, 6500);
           const normalized = (value:string) => value.replace(/\s+/g," ").trim().toLowerCase();
           if (!quote || !normalized(excerpt).includes(normalized(quote)) || !isPublicSourceUrl(row.source_url)) return [];
-          const instruction = "According to the cited source, what is the relationship between " + row.subject + " and " + row.predicate + "?";
+          const instruction = "According to the source \"" + String(row.title || "research source").slice(0,160) + "\", what is the relationship between " + row.subject + " and " + row.predicate + "?";
           const response = row.subject + " " + row.predicate + " " + row.object + ". Source evidence: \"" + quote + "\" Source: " + row.source_url;
           return [{ instruction, response, category:"factuality", source_url:row.source_url, supporting_quote:quote,
             source_excerpt:excerpt, source_excerpt_sha256:"", source_type:"public_source", confidence:row.confidence, title:row.title }];
