@@ -58,7 +58,7 @@ def _extract_keywords(text: str, limit: int = 12) -> list[str]:
 
 def _summarize(text: str, max_sentences: int = 4) -> str:
     sentences=re.split(r"(?<=[.!?])\s+",re.sub(r"\s+"," ",text).strip())
-    return " ".join(s.strip() for s in sentences if len(s.strip())>=45][:max_sentences])[:1200]
+    return " ".join([s.strip() for s in sentences if len(s.strip())>=45][:max_sentences])[:1200]
 
 class AutonomousExplorer:
     def __init__(self, output_dir="titan-exploration", duration_seconds=1800, max_pages=500, timeout_seconds=15, host_delay=1.0):
