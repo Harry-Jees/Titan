@@ -1,7 +1,7 @@
 import type { Env } from "./types";
 export type ResearchPage={url:string;canonicalUrl:string;title:string;text:string;contentHash:string;links:string[]};
 export const RESEARCH_SEEDS=["https://arxiv.org/","https://docs.python.org/3/","https://developer.mozilla.org/","https://kubernetes.io/docs/","https://docs.github.com/","https://developers.cloudflare.com/","https://huggingface.co/docs","https://pytorch.org/docs/stable/","https://scikit-learn.org/stable/","https://www.tensorflow.org/learn","https://www.rfc-editor.org/","https://www.w3.org/TR/","https://www.nist.gov/","https://www.noaa.gov/","https://www.nasa.gov/","https://www.who.int/","https://www.worldbank.org/","https://ourworldindata.org/","https://plato.stanford.edu/","https://ocw.mit.edu/","https://www.britannica.com/"];
-const USER_AGENT="TitanKnowledgeBot",MAX_BYTES=1_500_000,MAX_TEXT=14_000;
+const USER_AGENT="TitanKnowledgeBot",MAX_BYTES=350_000,MAX_TEXT=10_000;
 export function isSafePublicUrl(value:string):boolean{
  try{const u=new URL(value);if(!["http:","https:"].includes(u.protocol)||u.username||u.password)return false;if(u.port&&!["80","443"].includes(u.port))return false;
  const h=u.hostname.toLowerCase().replace(/\.$/,"");if(!h||h==="localhost"||h.endsWith(".localhost")||h.endsWith(".local")||h.endsWith(".internal")||h.endsWith(".lan"))return false;
