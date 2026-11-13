@@ -40,3 +40,7 @@ A human reviews the resulting dataset before importing it into Titan's knowledge
 ## Next integration
 
 Connect JSONL output to Titan's source-attributed knowledge ingestion, then add an opt-in local gpt-oss page-understanding adapter. Preserve original URLs and hashes as provenance.
+
+## Run a first session from GitHub Actions
+
+Open the repository's Actions tab, select **Titan 30-minute exploration session**, choose the feature branch containing this workflow, keep the default 30 minutes / 500 pages, and select **Run workflow**. Leave the seed URL empty for automatic seed discovery, or provide a public topic URL. The run uploads a `titan-exploration` artifact containing `pages.jsonl` and `session.json` for 14 days. This is manual-only; it does not start a recurring schedule.
