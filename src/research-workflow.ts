@@ -11,8 +11,9 @@ export class TitanResearchWorkflow extends WorkflowEntrypoint<Env,ResearchParams
   const durationSeconds=Math.max(60,Math.min(1800,event.payload.durationSeconds||1800));
   const startedAt=scheduledAt,maxPages=240;
   await step.do("initialize-research-run",async()=>{
-   await this.env.DB.prepare("INSERT OR IGNORE INTO research_runs(run_id,status,scheduled_at,started_at) VALUES(?,'running',?,CURRENT_TIMESTAMP)")
-    .bind(runId,new Date(scheduledAt).toISOString()).run();
+   await this.env.DB.prepare("INSERT OR IGNORE INTO research_runs(run_id,status,scheduled_at,started_at) VALUES(?,'running',?,CURRENT_TIMESTAMP)").bind(runId,new Date(scheduledAt).toISOString()).run();
+   await this.env.DB.prepare("UPDATE research_frontier SET status='queued',updated_at=CURRENT_TIMESTAMP WHERE status IN ('learned','unchanged','skipped','failed') AND updated_at<datetime('now','-7 days')").run();
+   await this.env.DB.prepare("UPDATE research_frontier SET status='queued',updated_at=CURRENT_TIMESTAMP WHERE status='processing' AND updated_at<datetime('now','-1 hour')").run();
    await this.env.DB.batch(RESEARCH_SEEDS.map((url,index)=>this.env.DB.prepare("INSERT OR IGNORE INTO research_frontier(url,depth,priority,discovered_from,status) VALUES(?,0,?,'scheduled-seed','queued')").bind(url,100-index)));
    return {seeded:RESEARCH_SEEDS.length};
   });
@@ -31,32 +32,37 @@ export class TitanResearchWorkflow extends WorkflowEntrypoint<Env,ResearchParams
      await this.env.DB.prepare("UPDATE research_frontier SET status='skipped',updated_at=CURRENT_TIMESTAMP WHERE url=?").bind(next.url).run();return true;
     });
    }else{
-    let learned:{factsAdded:number;chunksAdded:number;summary:string};
-    try{
-     learned=await step.do("understand-and-index-"+processed,async()=>learnFromPage(this.env,page,runId));
-    }catch(error){
-     const message=error instanceof Error?error.message:"Knowledge analysis failed";
-     await step.do("mark-learning-failed-"+processed,async()=>{
-      await this.env.DB.prepare("UPDATE research_frontier SET status='failed',updated_at=CURRENT_TIMESTAMP WHERE url=?").bind(next.url).run();
-      await this.env.DB.prepare("UPDATE research_runs SET status='partial',error=? WHERE run_id=?").bind(message.slice(0,1000),runId).run();
-      return true;
+    const previous=await step.do("check-page-freshness-"+processed,async()=>
+     this.env.DB.prepare("SELECT content_hash FROM research_pages WHERE source_url=?").bind(page.url).first<{content_hash:string}>()
+    );
+    const unchanged=previous?.content_hash===page.contentHash;
+    let learned={factsAdded:0,chunksAdded:0,summary:"unchanged page"};
+    if(unchanged){
+     await step.do("touch-unchanged-page-"+processed,async()=>{
+      await this.env.DB.prepare("UPDATE research_pages SET fetched_at=CURRENT_TIMESTAMP WHERE source_url=?").bind(page.url).run();return true;
      });
-     if(/budget|capacity|binding/i.test(message)){stopReason=message;break;}
-     processed++;
-     await step.sleep("failure-pacing-"+processed,"1 second");
-     continue;
+    }else{
+     try{
+      learned=await step.do("understand-and-index-"+processed,async()=>learnFromPage(this.env,page,runId));
+     }catch(error){
+      const message=error instanceof Error?error.message:"Knowledge analysis failed";
+      await step.do("mark-learning-failed-"+processed,async()=>{
+       await this.env.DB.prepare("UPDATE research_frontier SET status='failed',updated_at=CURRENT_TIMESTAMP WHERE url=?").bind(next.url).run();
+       await this.env.DB.prepare("UPDATE research_runs SET status='partial',error=? WHERE run_id=?").bind(message.slice(0,1000),runId).run();return true;
+      });
+      if(/budget|capacity|binding/i.test(message)){stopReason=message;break;}
+      processed++;await step.sleep("failure-pacing-"+processed,"1 second");continue;
+     }
     }
     await step.do("queue-discovered-links-"+processed,async()=>{
-     await this.env.DB.prepare("UPDATE research_frontier SET status='learned',updated_at=CURRENT_TIMESTAMP WHERE url=?").bind(next.url).run();
+     await this.env.DB.prepare("UPDATE research_frontier SET status=?,updated_at=CURRENT_TIMESTAMP WHERE url=?").bind(unchanged?"unchanged":"learned",next.url).run();
      const links=page.links.filter(link=>link!==page.url).slice(0,8);
      if(next.depth<2&&links.length)await this.env.DB.batch(links.map((link,index)=>this.env.DB.prepare("INSERT OR IGNORE INTO research_frontier(url,depth,priority,discovered_from,status) VALUES(?,?,?,?,'queued')").bind(link,next.depth+1,50-index,page.url)));
-     await this.env.DB.prepare("UPDATE research_runs SET pages_crawled=pages_crawled+1,facts_added=facts_added+?,chunks_added=chunks_added+? WHERE run_id=?").bind(learned.factsAdded,learned.chunksAdded,runId).run();
-     return links.length;
+     await this.env.DB.prepare("UPDATE research_runs SET pages_crawled=pages_crawled+1,facts_added=facts_added+?,chunks_added=chunks_added+? WHERE run_id=?").bind(learned.factsAdded,learned.chunksAdded,runId).run();return links.length;
     });
     pagesCrawled++;factsAdded+=learned.factsAdded;chunksAdded+=learned.chunksAdded;
    }
-   processed++;
-   await step.sleep("crawl-pacing-"+processed,"1 second");
+   processed++;await step.sleep("crawl-pacing-"+processed,"1 second");
   }
   const remaining=await this.env.DB.prepare("SELECT COUNT(*) AS count FROM research_frontier WHERE status='queued'").first<{count:number}>();
   const status=(stopReason||remaining?.count)?"partial":"completed";
