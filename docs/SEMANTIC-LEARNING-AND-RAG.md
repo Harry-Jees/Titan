@@ -31,7 +31,7 @@ Cloudflare Workers AI documents a free allocation of 10,000 neurons per day. Tit
 
 The code and Wrangler configuration do not activate the live Worker until reviewed, merged, and deployed. Before production activation:
 
-1. Apply migration 0009_semantic_learning.sql to the titan-memory D1 database.
+1. Back up the titan-memory D1 database, then apply the pending repository migrations with `npx wrangler d1 migrations apply titan-memory --remote`. The live migration ledger currently records only 0001–0002, while several later tables already exist; the migration test reproduces that observed shape and verifies the full sequence. Migration 0007 adds the missing approval fingerprint, 0008 creates experience tables, and 0009 adds the semantic knowledge store.
 2. Deploy the Worker with the Workers AI binding and Workflow binding.
 3. Verify the two Cron Triggers in the Cloudflare dashboard.
 4. Trigger one admin-only test run and inspect the research status endpoint before relying on the recurring schedule.
