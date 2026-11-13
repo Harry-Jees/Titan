@@ -23,7 +23,7 @@ The simulator is a fixed baseline, not a learned policy. Route-level disposable-
 ## Implemented on development/titan-foundation
 - Cloudflare Worker API for chat, conversations, memory, knowledge, evaluation, API-tool provisioning and per-user training preferences.
 - Public browser chat interface served from the Worker root; anonymous session bootstrap, random per-visitor namespace, hashed session capabilities, 30-day expiry, per-session and per-IP daily request caps, and additive D1 initialization for public sessions and knowledge retrieval.
-- **Semantic-learning branch:** GPT-OSS-20B is connected through Workers AI for reasoning; BGE-M3 embeddings plus D1 FTS5 provide hybrid RAG. A 9,000-neuron daily reservation ceiling and per-run/chat buckets prevent paid fallback. This branch is not yet deployed.
+- **Semantic-learning branch:** GPT-OSS-20B is connected through Workers AI for reasoning; BGE-M3 embeddings plus D1 FTS5 provide hybrid RAG. A 7,000-neuron daily reservation ceiling and per-run/chat buckets prevent paid fallback. This branch is not yet deployed.
 - Bearer-token namespace isolation and compatibility with the existing Titan auth map.
 - Server-side conversation history; client-supplied history is ignored.
 - Additive D1 migrations for memory, knowledge, conversations, encrypted API tools, pending approvals, audit, daily quotas and training records.
