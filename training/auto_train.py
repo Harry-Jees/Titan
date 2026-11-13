@@ -117,8 +117,9 @@ def cycle() -> dict:
     ).encode("utf-8")).hexdigest()
     previous = read_state()
     previous_digest = str(previous.get("successful_dataset_sha256", ""))
-    previous_count = int(previous.get("successful_examples", 0) or 0)
-    new_examples = max(0, len(rows) - previous_count)
+    previous_fingerprints = set(previous.get("successful_prompt_fingerprints", []))
+    fingerprints = {hashlib.sha256(row["instruction"].encode("utf-8")).hexdigest() for row in rows}
+    new_examples = len(fingerprints - previous_fingerprints)
 
     report = {
         "examples": len(rows),
@@ -159,6 +160,7 @@ def cycle() -> dict:
     previous.update({
         "successful_dataset_sha256": digest,
         "successful_examples": len(rows),
+        "successful_prompt_fingerprints": sorted(fingerprints),
         "last_successful_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "candidate_adapter": str(adapter.relative_to(ROOT)),
         "promotion": "not promoted; candidate requires human review",
