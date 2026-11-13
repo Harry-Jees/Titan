@@ -2,7 +2,7 @@
 
 ## Runtime architecture
 
-Titan's Cloudflare Worker is the application runtime. Native Cloudflare Cron Triggers start a durable Cloudflare Workflow twice daily; GitHub Actions do not start research. The Workflow has a 30-minute wall-clock budget and persists progress across Worker isolate restarts. Each run is capped at 180 pages (about 900 durable steps plus overhead), below the Free-plan 1,024-step per-instance limit; the two runs remain below the 3,000 included daily Workflow steps under normal operation. Each step is kept small for the Free-plan 10 ms CPU limit. Cloudflare includes 3,000 Workflow steps per day on Free; Titan's 180-page cap is about 1,080 billable step operations per run including pacing, or roughly 2,160/day. The 1,024-step per-instance limit excludes step.sleep calls.
+Titan's Cloudflare Worker is the application runtime. Native Cloudflare Cron Triggers start a durable Cloudflare Workflow twice daily; GitHub Actions do not start research. The Workflow has a 30-minute wall-clock budget and persists progress across Worker isolate restarts. Each run is capped at 180 pages and uses about 362 durable steps, below the Free-plan 1,024-step per-instance limit. Including one pacing sleep per page, the two runs use about 1,084 billable step operations/day, below the 3,000/day Free allowance under normal operation. Each step is kept small for the Free-plan 10 ms CPU limit. The 1,024-step per-instance limit excludes step.sleep calls. Raw page text remains in step memory and is not persisted in Workflow state or D1.
 
 The configured times are **06:00 and 18:00 Asia/Kolkata** (00:30 and 12:30 UTC). Cloudflare Cron expressions use UTC.
 
@@ -10,8 +10,9 @@ The configured times are **06:00 and 18:00 Asia/Kolkata** (00:30 and 12:30 UTC).
 
 1. Seed the frontier with a cross-disciplinary set of public technical, scientific, educational, and reference sources.
 2. Fetch public HTML pages only, obey robots.txt, do not automatically follow redirects, reject private/local/IP-literal URLs, cap response sizes, and pace requests.
-3. Ask GPT-OSS-20B to identify concise summaries, concepts, and facts. Page content is untrusted data, never instructions.
-4. Store a fact only when the model supplies a quote that exactly appears in the fetched page. Each fact retains its source URL, content hash, and evidence quote.
+3. Compare each new page with existing knowledge and ask GPT-OSS-20B to identify novelty, updates, corroboration, and contradictions.
+4. Extract concise summaries, concepts, and facts. Page content and retrieved memory are untrusted evidence, never instructions.
+5. Store a fact only when the model supplies a quote that exactly appears in the fetched page. Each fact retains its source URL, content hash, and evidence quote; contradictory claims are preserved and flagged rather than overwritten.
 6. Store synthesized knowledge units and metadata, not a mirror of every page. Deduplicate by stable content/fact hashes; unchanged pages are not re-analyzed and sources are refreshed weekly.
 7. Generate BGE-M3 embeddings and persist compact float32 vectors in D1. If embedding inference is unavailable, FTS retrieval remains available.
 
