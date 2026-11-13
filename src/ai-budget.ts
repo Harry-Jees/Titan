@@ -2,7 +2,7 @@ import type { Env } from "./types";
 const DAILY_NEURON_LIMIT = 9000;
 const INPUT_NEURONS_PER_TOKEN = 18182 / 1_000_000;
 const OUTPUT_NEURONS_PER_TOKEN = 27273 / 1_000_000;
-const EMBEDDING_NEURONS_PER_TOKEN = 1075 / 1_000_000;
+const EMBEDDING_NEURONS_PER_TOKEN = INPUT_NEURONS_PER_TOKEN; // conservative ceiling
 
 /** Reserve against Cloudflare's 10,000-neuron free daily allocation before inference. */
 export async function reserveAiNeurons(env: Env, inputCharacters: number, outputTokens: number,
