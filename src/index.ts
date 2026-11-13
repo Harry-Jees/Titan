@@ -41,6 +41,32 @@ export default {
           cloudflareAiBinding: true,
           message: "Titan uses GPT-OSS-20B with source-attributed semantic knowledge retrieval. Research is scheduled by native Worker Cron Triggers." });
 
+      if (request.method === "POST" && url.pathname === "/training/rag-export") {
+        if (!isAdmin(request, env)) return json({ error: "Unauthorized" }, 401);
+        // Only evidence-backed public research facts enter the training corpus.
+        // Conflicting facts and user conversations are deliberately excluded.
+        const result = await env.DB.prepare(
+          "SELECT f.subject,f.predicate,f.object,f.confidence,e.source_url,e.quote,k.title,k.content " +
+          "FROM knowledge_facts f " +
+          "INNER JOIN knowledge_evidence e ON e.fact_id=f.id " +
+          "INNER JOIN knowledge_units k ON k.source_url=e.source_url " +
+          "WHERE f.status='evidence-backed' AND f.confidence>=0.75 " +
+          "ORDER BY f.updated_at DESC,e.created_at DESC LIMIT 5000"
+        ).all<{ subject:string;predicate:string;object:string;confidence:number;source_url:string;quote:string;title:string;content:string }>();
+        const rows = (result.results || []).flatMap(row => {
+          const quote = String(row.quote || "").trim();
+          const excerpt = String(row.content || "").slice(0, 6500);
+          const normalized = (value:string) => value.replace(/\\s+/g," ").trim().toLowerCase();
+          if (!quote || !normalized(excerpt).includes(normalized(quote)) || !normalized(row.source_url).startsWith("https://")) return [];
+          const instruction = "According to the cited source, what is the relationship between " + row.subject + " and " + row.predicate + "?";
+          const response = row.subject + " " + row.predicate + " " + row.object + ". Source evidence: \"" + quote + "\" Source: " + row.source_url;
+          return [{ instruction, response, category:"factuality", source_url:row.source_url, supporting_quote:quote,
+            source_excerpt:excerpt, source_excerpt_sha256:"", source_type:"public_source", confidence:row.confidence, title:row.title }];
+        });
+        const enriched = await Promise.all(rows.map(async row => ({...row,source_excerpt_sha256:await digest(row.source_excerpt)})));
+        return json({ generated_at:new Date().toISOString(), source:"Titan evidence-backed RAG facts", examples:enriched.length, rows:enriched });
+      }
+
       if (url.pathname === "/tools" || url.pathname === "/tools/provision") {
         const scope = await memoryScope(request, env);
         if (!scope) return json({ error: "Unauthorized" }, 401);
