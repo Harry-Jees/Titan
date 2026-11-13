@@ -108,7 +108,7 @@ export async function retrieveKnowledge(env:Env,query:string,bucket="chat",bucke
  }
  try{
   const [queryVector]=await embedTexts(env,[query.slice(0,3000)],bucket,bucketLimit);
-  const recent=await env.DB.prepare("SELECT id,source_url,title,content,summary,kind,embedding_json FROM knowledge_units WHERE embedding_json IS NOT NULL ORDER BY created_at DESC LIMIT 250").all<any>();
+  const recent=await env.DB.prepare("SELECT id,source_url,title,content,summary,kind,embedding_json FROM knowledge_units WHERE embedding_json IS NOT NULL ORDER BY created_at DESC LIMIT 100").all<any>();
   for(const row of recent.results||[]){const vector=decodeVector(String(row.embedding_json||""));if(!vector.length)continue;
    const score=Math.max(0,cosineSimilarity(queryVector,vector))*0.75+(candidates.get(row.id)?.score||0);
    candidates.set(row.id,{...row,score});}
