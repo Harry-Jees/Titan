@@ -20,7 +20,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA = ROOT / "training" / "curated.jsonl"
+DATA = ROOT / "training" / "auto_curated.jsonl"
 STATE = ROOT / "training" / "auto_train_state.json"
 MIN_EXAMPLES = max(20, int(os.environ.get("TITAN_AUTO_MIN_EXAMPLES", "100")))
 MIN_NEW_EXAMPLES = max(1, int(os.environ.get("TITAN_AUTO_MIN_NEW_EXAMPLES", "20")))
@@ -118,7 +118,7 @@ def cycle() -> dict:
     previous = read_state()
     previous_digest = str(previous.get("successful_dataset_sha256", ""))
     previous_fingerprints = set(previous.get("successful_prompt_fingerprints", []))
-    fingerprints = {hashlib.sha256(row["instruction"].encode("utf-8")).hexdigest() for row in rows}
+    fingerprints = {hashlib.sha256(json.dumps(row, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest() for row in rows}
     new_examples = len(fingerprints - previous_fingerprints)
 
     report = {
@@ -134,6 +134,9 @@ def cycle() -> dict:
         return report
     if digest == previous_digest or new_examples < MIN_NEW_EXAMPLES:
         report["reason"] = "Not enough new evidence since the previous successful training cycle."
+        return report
+    if digest == previous.get("last_failed_dataset_sha256"):
+        report["reason"] = "This exact dataset failed training previously; waiting for new evidence before retrying."
         return report
 
     write_jsonl(DATA, rows)
