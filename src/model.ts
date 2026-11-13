@@ -14,10 +14,10 @@ function extractText(result: any): string {
 export async function complete(env: Env, messages: ChatMessage[], options: CompletionOptions = {}): Promise<Completion> {
   if (!env.AI) throw new Error("Titan AI binding is missing. Deploy the Workers AI binding before using GPT-OSS.");
   const maxOutputTokens = Math.max(128,Math.min(2048,options.maxOutputTokens??1200));
-  const inputCharacters = messages.reduce((sum,message)=>sum+message.content.length,0);
+  const inputBytes = new TextEncoder().encode(messages.map(message=>message.content).join("\\n")).length;
   const bucket = options.bucket || "chat";
   const bucketLimit = options.bucketLimit ?? (bucket==="chat"?2000:3500);
-  if (!await reserveAiNeurons(env,inputCharacters,maxOutputTokens,bucket,bucketLimit))
+  if (!await reserveAiNeurons(env,inputBytes,maxOutputTokens,bucket,bucketLimit))
     throw new Error("Titan reached its protected daily free-inference budget. No paid fallback was attempted.");
   const input:any={messages,max_tokens:maxOutputTokens,temperature:0.2};
   if(options.jsonMode)input.response_format={type:"json_object"};
