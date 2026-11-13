@@ -22,7 +22,7 @@ Requirements: Node.js 20+, npm, Python 3.11+.
     npm test
     python -m pytest -q
 
-Apply migrations 0001 through 0007 in numeric order to a **development** D1 database. The schemas are aligned with the current live Titan D1 table shapes, but must still be applied to a staging copy first. Do not run them against the live database from this repository.
+Apply migrations 0001 through 0009 in numeric order to a **disposable development** D1 database. The schemas are aligned with the current live Titan D1 table shapes, but must still be applied to a staging copy first. Do not run them against the live database from this repository.
 
 ## Worker configuration
 Main Worker: wrangler.toml, entry src/index.ts.
@@ -60,6 +60,7 @@ Keep secrets out of source control. The semantic-learning branch connects GPT-OS
 - GET /training/preferences, POST /training/preferences — explicit user opt-in/out
 - GET /training/examples, DELETE /training/examples?id=... — view or delete your own curation examples
 - GET /training/examples/export — export only your own approved examples as JSONL
+- POST /training/rag-export — admin-only export of evidence-backed public RAG facts for local LoRA candidate training
 - POST /training/examples/review — approve/reject one of your own candidate examples
 - POST /knowledge, GET /knowledge?q=... (admin token)
 - POST /evaluate (admin token)
