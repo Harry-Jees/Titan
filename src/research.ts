@@ -25,7 +25,7 @@ function plainText(html:string):string{return decodeEntities(html.replace(/<\s*(
 export function extractResearchPage(html:string,url:string):Omit<ResearchPage,"contentHash">|null{
  const titleMatch=html.match(/<title[^>]*>([\s\S]*?)<\/title>/i),title=titleMatch?plainText(titleMatch[1]).slice(0,400):"";
  const main=html.match(/<(main|article)[^>]*>([\s\S]*?)<\/\1\s*>/i),body=main?main[2]:html;
- const paragraphs=[...body.matchAll(/<(?:p|h1|h2|h3|li)[^>]*>([\s\S]*?)<\/(?:p|h1|h2|h3|li)\s*>/gi)].map(m=>plainText(m[1])).filter(t=>t.length>35);
+ const paragraphs=[...body.matchAll(/<(p|h1|h2|h3|li)[^>]*>([\s\S]*?)<\/\1\s*>/gi)].map(m=>({tag:m[1].toLowerCase(),text:plainText(m[2])})).filter(item=>item.text.length>35||/^h[1-3]$/.test(item.tag)).map(item=>item.text);
  const text=(paragraphs.length>=2?paragraphs.join("\n"):plainText(body)).slice(0,MAX_TEXT);if(text.length<250)return null;
  const links:string[]=[],seen=new Set<string>();for(const m of html.matchAll(/<a\b[^>]*href\s*=\s*["']([^"'#]+)["'][^>]*>/gi)){const link=normalizeResearchUrl(m[1],url);if(link&&link!==normalizeResearchUrl(url)&&!seen.has(link)){seen.add(link);links.push(link);if(links.length>=40)break;}}
  let canonicalUrl=normalizeResearchUrl(url);const canonical=html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i);if(canonical)canonicalUrl=normalizeResearchUrl(canonical[1],url)||canonicalUrl;
