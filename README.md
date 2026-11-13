@@ -7,7 +7,8 @@ Titan is a separate, cloud-first personal agent. This repository contains a port
 ## Stack
 - Cloudflare Workers + TypeScript
 - Cloudflare D1 for memory, conversations, knowledge, tool registry, approvals, audit, quotas and training records
-- Configurable OpenAI-compatible inference with Workers AI fallback
+- GPT-OSS-20B reasoning through Workers AI, protected by a strict daily free-neuron budget
+- BGE-M3 embeddings and hybrid D1 FTS5 + vector RAG
 - Robots-aware public research crawler and source-attributed chunking
 - Opt-in conversation curation; candidate LoRA training is separate and manual
 - PR-only self-build workflow; no auto-merge. The separate public Worker auto-deploys only from `development/titan-foundation`.
@@ -43,7 +44,7 @@ Optional secrets/vars:
 - TITAN_DAILY_REQUEST_LIMIT (default 200 per user per UTC day)
 - TITAN_TRAINING_CRON_SECRET (optional HTTP trigger secret for the training worker)
 
-Keep secrets out of source control. Titan must not use Cloudflare Workers AI or any hosted inference API. The Workers AI binding and automatic fallback have been removed. Chat remains unavailable until Titan's own local model runtime is ready; this prevents surprise cloud-credit usage.
+Keep secrets out of source control. The semantic-learning branch connects GPT-OSS-20B and BGE-M3 through the Worker AI binding. Titan reserves at most 9,000 of the documented 10,000 free Workers AI neurons per UTC day and has no paid-model fallback. The live Worker is not updated by a branch push; apply migration 0009 and deploy the reviewed branch before expecting this inference path to work.
 
 ## API
 - GET /health
@@ -55,6 +56,7 @@ Keep secrets out of source control. Titan must not use Cloudflare Workers AI or 
 - DELETE /tools?name=...
 - GET /experiences/episodes/:id/replay — deterministic read-only projection; never executes actions
 - GET /experiences/episodes/:id/events?after=0&limit=200 — sequence-cursor event pages (limit 1–200; `nextAfter` is exclusive)
+- GET /research/status and POST /research/run — admin-only research status and one-off test run
 - GET /training/preferences, POST /training/preferences — explicit user opt-in/out
 - GET /training/examples, DELETE /training/examples?id=... — view or delete your own curation examples
 - GET /training/examples/export — export only your own approved examples as JSONL
@@ -67,7 +69,7 @@ Conversation history is loaded server-side and scoped to the bearer namespace; c
 Registered tools can be selected by the model and run with strict parameter allowlists. Provisioning and execution fail closed unless the target hostname exactly matches TITAN_TOOL_HOST_ALLOWLIST; do not add user-controlled domains, redirectors or untrusted hosts. Server-managed tools may reference only dedicated TITAN_TOOL_SECRET_* bindings, never general model, auth or admin secrets. POST tools create a 10-minute, single-use approval bound to a fingerprint of the tool definition; changing the tool invalidates the pending approval. Tool calls are audited. External tool metadata and responses are treated as untrusted data.
 
 ## Research and learning schedules
-- **12:00 PM IST (06:30 UTC):** GitHub Actions daily research workflow. It crawls public sitemaps with robots-aware access, host pacing and bounded downloads, plans coverage gaps, creates source-attributed chunks and uploads a cycle artifact. It does not call a teacher model or fine-tune.
+- **06:00 AM and 06:00 PM IST:** native Cloudflare Worker Cron Triggers start durable 30-minute research workflows. GPT-OSS converts pages into evidence-backed facts, concepts and concise knowledge units; BGE-M3 embeddings and FTS5 power hybrid RAG. GitHub Actions do not trigger research.
 - **09:00 AM IST (03:30 UTC):** separate D1 curation worker. It processes only conversations from users who explicitly enable training_preferences, screens sensitive data, grades at most eight pairs and stores candidates. It does not update model weights.
 - **Candidate LoRA training:** manual and separate. Teacher API calls may incur costs; GPU availability and model downloads are not guaranteed free. Candidates must pass held-out capability and safety checks and require human review. No adapter is automatically promoted, merged or deployed.
 
