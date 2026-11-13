@@ -25,7 +25,7 @@ RAG updates Titan's usable knowledge immediately without changing GPT-OSS weight
 
 ## Cost guard
 
-Cloudflare Workers AI documents a free allocation of 10,000 neurons per day. Titan reserves at most 9,000 neurons per UTC day, with a 3,500-neuron cap for each research run and a 2,000-neuron chat bucket. It never falls back to a paid model. Requests fail closed when the protected budget is exhausted. This is an application-side guard; check the Cloudflare dashboard to verify actual account usage and plan status.
+Cloudflare Workers AI documents a free allocation of 10,000 neurons per day. Titan reserves at most 7,000 neurons per UTC day, with a 2,500-neuron cap for each research run and a 2,000-neuron chat bucket. It never falls back to a paid model. Requests fail closed when the protected budget is exhausted. This is an application-side guard; check the Cloudflare dashboard to verify actual account usage and plan status.
 
 ## Activation
 
