@@ -7,7 +7,7 @@ type ResearchParams={runId:string;scheduledAt:number;durationSeconds?:number};
 
 export class TitanResearchWorkflow extends WorkflowEntrypoint<Env,ResearchParams>{
  async run(event:WorkflowEvent<ResearchParams>,step:WorkflowStep):Promise<Record<string,unknown>>{
-  const runId=event.payload.runId,scheduledAt=event.payload.scheduledAt||Date.now();
+  const runId=event.payload.runId,scheduledAt=Number.isFinite(event.payload.scheduledAt)?event.payload.scheduledAt:0;
   const durationSeconds=Math.max(60,Math.min(1800,event.payload.durationSeconds||1800));
   const startedAt=scheduledAt,maxPages=180;
   await step.do("initialize-research-run",async()=>{
