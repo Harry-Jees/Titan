@@ -55,7 +55,7 @@ The simulator is a fixed baseline, not a learned policy. Route-level disposable-
 - Public-access branch head `fc505245e2b78ab4a367240a0418e133fa2c873e` passed GitHub Actions run #149 (Python tests, TypeScript strict typecheck, Vitest, Wrangler dry-run bundle and short-lived deployment artifact).
 - The development branch is ahead of main; draft PR #1 is open and unmerged.
 - The previous GitHub research schedules are removed in the semantic-learning branch. Native Cron Triggers become active only after the reviewed Worker configuration is deployed.
-- Read-only Cloudflare inspection found the live D1 schema already contains the current tool and training tables, but its migration ledger differs from this repository's sequence. No migration was applied; staging compatibility still needs a deliberate check.
+- Read-only Cloudflare inspection found the live D1 ledger contains only 0001–0002, while tool/training tables already exist; the pending tool fingerprint and agent-experience tables are absent. The migration test now reproduces this observed live shape and verifies the complete pending migration sequence. No production migration was applied.
 - No GPU training or teacher API call was run.
 
 ## Not done
