@@ -6,7 +6,7 @@ export async function embedTexts(env:Env,texts:string[],bucket="chat",bucketLimi
  if(!texts.length)return [];
  if(!env.AI)throw new Error("Titan AI binding is missing; semantic embeddings are unavailable.");
  const boundedTexts=texts.map(text=>text.slice(0,1000));
- const length=boundedTexts.reduce((sum,text)=>sum+text.length,0);
+ const length=new TextEncoder().encode(boundedTexts.join("\\n")).length;
  if(!await reserveAiNeurons(env,length,0,bucket,bucketLimit,true))throw new Error("Titan reached its protected daily embedding budget. No paid fallback was attempted.");
  const result=await env.AI.run(EMBEDDING_MODEL,{text:boundedTexts} as any) as any;
  const rows=result?.data??result?.embeddings??result?.vectors??result?.embedding;
