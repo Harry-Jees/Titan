@@ -2,7 +2,7 @@
 
 ## Runtime architecture
 
-Titan's Cloudflare Worker is the application runtime. Native Cloudflare Cron Triggers start a durable Cloudflare Workflow twice daily; GitHub Actions do not start research. The Workflow has a 30-minute wall-clock budget and persists progress across Worker isolate restarts. Each run is capped at 180 pages (about 900 durable steps plus overhead), below the Free-plan 1,024-step per-instance limit; the two runs remain below the 3,000 included daily Workflow steps under normal operation. Each step is kept small for the Free-plan CPU limit.
+Titan's Cloudflare Worker is the application runtime. Native Cloudflare Cron Triggers start a durable Cloudflare Workflow twice daily; GitHub Actions do not start research. The Workflow has a 30-minute wall-clock budget and persists progress across Worker isolate restarts. Each run is capped at 180 pages (about 900 durable steps plus overhead), below the Free-plan 1,024-step per-instance limit; the two runs remain below the 3,000 included daily Workflow steps under normal operation. Each step is kept small for the Free-plan 10 ms CPU limit. Cloudflare includes 3,000 Workflow steps per day on Free; Titan's 180-page cap is about 1,080 billable step operations per run including pacing, or roughly 2,160/day. The 1,024-step per-instance limit excludes step.sleep calls.
 
 The configured times are **06:00 and 18:00 Asia/Kolkata** (00:30 and 12:30 UTC). Cloudflare Cron expressions use UTC.
 
@@ -25,7 +25,7 @@ RAG updates Titan's usable knowledge immediately without changing GPT-OSS weight
 
 ## Cost guard
 
-Cloudflare Workers AI documents a free allocation of 10,000 neurons per day. Titan reserves at most 7,000 neurons per UTC day, with a 2,500-neuron cap for each research run and a 2,000-neuron chat bucket. It never falls back to a paid model. Requests fail closed when the protected budget is exhausted. This is an application-side guard; check the Cloudflare dashboard to verify actual account usage and plan status.
+Cloudflare Workers AI documents a free allocation of 10,000 neurons per day. Titan reserves against a conservative 7,000-neuron estimate per UTC day, with a 2,500-neuron cap for each research run and a 2,000-neuron chat bucket. It never falls back to a paid model. Requests fail closed when the protected budget is exhausted. This is an application-side estimate, not an account-wide quota meter. All Workers AI workloads in the Cloudflare account share the free allocation, so other Workers may consume the remaining headroom. Check account usage before activation.
 
 ## Activation
 
