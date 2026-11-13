@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS research_pages (
  summary TEXT NOT NULL,
  topics_json TEXT NOT NULL DEFAULT '[]',
  quality_score REAL NOT NULL DEFAULT 0,
+ novelty TEXT NOT NULL DEFAULT 'unknown',
  fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_research_pages_fetched ON research_pages(fetched_at DESC);
