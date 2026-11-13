@@ -1,7 +1,7 @@
 import type { Env, ChatMessage } from "./types";
 import { publicHome } from "./public";
 import { complete } from "./model";
-import { retrieveKnowledge } from "./knowledge";
+import { retrieveKnowledge, indexKnowledgeChunk } from "./knowledge";
 import { json, isAdmin, memoryScope, isPublicSourceUrl, readJson, RequestBodyError, issuePublicSession, consumePublicIpQuota } from "./security";
 import { listTools, provisionTool, deleteTool, executeTool, recordToolAudit, consumeDailyQuota, createPendingToolCall, consumePendingToolCall } from "./tools";
 import { createExperienceEpisode, listExperienceEpisodes, appendExperienceEvent, listExperienceEvents, parseExperienceEventPage, replayExperienceEpisode } from "./experiences";
@@ -278,24 +278,23 @@ export default {
       if(request.method==="POST" && url.pathname==="/knowledge"){
         const body=await readJson(request) as {chunks?:{source_url?:string;title?:string;content?:string;content_hash?:string}[]};
         if(!Array.isArray(body.chunks)||body.chunks.length<1||body.chunks.length>25)return json({error:"chunks must contain 1–25 items per request"},400);
-        const statements:D1PreparedStatement[]=[];
+        let valid=0,inserted=0;
         for(const chunk of body.chunks){
           const source=String(chunk.source_url||""), text=String(chunk.content||"").trim();
           if(!isPublicSourceUrl(source)||!text||text.length>5000)continue;
-          const title=String(chunk.title||"").slice(0,300), hash=String(chunk.content_hash||await digest(source+"\n"+text)).slice(0,128);
-          statements.push(env.DB.prepare("INSERT OR IGNORE INTO knowledge_chunks(id,source_url,title,content,content_hash) VALUES(?,?,?,?,?)").bind(crypto.randomUUID(),source.slice(0,2048),title,text,hash));
+          valid++;
+          if(await indexKnowledgeChunk(env,{sourceUrl:source,title:String(chunk.title||"").slice(0,300),content:text,kind:"import"}))inserted++;
         }
-        const results=statements.length?await env.DB.batch(statements):[];
-        return json({accepted:body.chunks.length,valid:statements.length,inserted:results.reduce((sum,row)=>sum+(row.meta.changes||0),0)},201);
+        return json({accepted:body.chunks.length,valid,inserted},201);
       }
       if(request.method==="GET" && url.pathname==="/knowledge"){
         const q=(url.searchParams.get("q")||"").slice(0,200).toLowerCase();
-        if(!q.trim()){const count=await env.DB.prepare("SELECT COUNT(*) AS count FROM knowledge_chunks").first<{count:number}>();return json({count:count?.count||0});}
+        if(!q.trim()){let countRow:{count:number}|null=null;try{countRow=await env.DB.prepare("SELECT COUNT(*) AS count FROM knowledge_units").first<{count:number}>();}catch{countRow=await env.DB.prepare("SELECT COUNT(*) AS count FROM knowledge_chunks").first<{count:number}>();}return json({count:countRow?.count||0});}
         const terms=[...new Set(q.match(/[a-z0-9]{3,}/g)||[])].slice(0,8); if(!terms.length)return json({results:[]});
         const where=terms.map(()=>"content LIKE ? OR title LIKE ?").join(" OR ");
         const score=terms.map(() => "(CASE WHEN content LIKE ? THEN 1 ELSE 0 END + CASE WHEN title LIKE ? THEN 2 ELSE 0 END)").join(" + ");
         const likes=terms.flatMap(term=>["%"+term+"%","%"+term+"%"]);
-        const found=await env.DB.prepare("SELECT source_url,title,content,created_at FROM knowledge_chunks WHERE "+where+" ORDER BY "+score+" DESC,created_at DESC LIMIT 20").bind(...likes,...likes).all();
+        let found:any;try{found=await env.DB.prepare("SELECT source_url,title,content,summary,kind,created_at FROM knowledge_units WHERE "+where+" ORDER BY "+score+" DESC,created_at DESC LIMIT 20").bind(...likes,...likes).all();}catch{found=await env.DB.prepare("SELECT source_url,title,content,\"\" AS summary,'legacy' AS kind,created_at FROM knowledge_chunks WHERE "+where+" ORDER BY "+score+" DESC,created_at DESC LIMIT 20").bind(...likes,...likes).all();}
         return json({results:found.results||[]});
       }
 
