@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import ipaddress
 import json
 import os
 import subprocess
@@ -54,6 +55,24 @@ def normalize(value: str) -> str:
     return " ".join(value.split()).casefold()
 
 
+def is_public_source(value: str) -> bool:
+    try:
+        parsed = urlparse(value)
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if parsed.scheme != "https" or not host or parsed.username or parsed.password:
+            return False
+        if parsed.port is not None and parsed.port not in {443}:
+            return False
+        if host == "localhost" or host.endswith((".localhost", ".local", ".internal", ".lan", ".test", ".invalid")):
+            return False
+        try:
+            return ipaddress.ip_address(host).is_global
+        except ValueError:
+            return "." in host and not host.startswith(".") and not host.endswith(".")
+    except ValueError:
+        return False
+
+
 def build_dataset(exported: list[dict]) -> list[dict]:
     accepted: list[dict] = []
     seen: set[str] = set()
@@ -66,7 +85,7 @@ def build_dataset(exported: list[dict]) -> list[dict]:
         subject = str(row.get("instruction", "")).strip()
         response = str(row.get("response", "")).strip()
         digest = str(row.get("source_excerpt_sha256", "")).strip().lower()
-        if not source.startswith("https://") or not quote or len(subject) < 12 or len(response) < 30:
+        if not is_public_source(source) or not quote or len(subject) < 12 or len(response) < 30:
             continue
         if normalize(quote) not in normalize(excerpt) or normalize(quote) not in normalize(response):
             continue
