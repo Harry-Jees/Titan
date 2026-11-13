@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS knowledge_facts (
  object TEXT NOT NULL,
  explanation TEXT NOT NULL DEFAULT '',
  confidence REAL NOT NULL DEFAULT 0.5 CHECK(confidence>=0 AND confidence<=1),
+ status TEXT NOT NULL DEFAULT 'evidence-backed',
+ conflict_group TEXT,
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
