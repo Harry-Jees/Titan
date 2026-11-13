@@ -22,6 +22,6 @@ describe("Titan GPT-OSS inference boundary",()=>{
   expect(calls).toBe(0);
  });
  it("fails clearly when the Workers AI binding is missing",async()=>{
-  await expect(complete({DB:fakeDb()} as any,[{role:"user",content:"hello"}])).rejects.toThrow("Workers AI binding is missing");
+  await expect(complete({DB:fakeDb()} as any,[{role:"user",content:"hello"}])).rejects.toThrow("Titan AI binding is missing");
  });
 });
