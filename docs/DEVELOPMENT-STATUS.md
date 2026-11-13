@@ -23,7 +23,7 @@ The simulator is a fixed baseline, not a learned policy. Route-level disposable-
 ## Implemented on development/titan-foundation
 - Cloudflare Worker API for chat, conversations, memory, knowledge, evaluation, API-tool provisioning and per-user training preferences.
 - Public browser chat interface served from the Worker root; anonymous session bootstrap, random per-visitor namespace, hashed session capabilities, 30-day expiry, per-session and per-IP daily request caps, and additive D1 initialization for public sessions and knowledge retrieval.
-- **Semantic-learning branch:** GPT-OSS-20B is connected through Workers AI for reasoning; BGE-M3 embeddings plus D1 FTS5 provide hybrid RAG. A 7,000-neuron daily reservation ceiling and per-run/chat buckets prevent paid fallback. This branch is not yet deployed.
+- **Semantic-learning branch:** GPT-OSS-20B is connected through Workers AI for reasoning; BGE-M3 embeddings plus D1 FTS5 provide hybrid RAG. A conservative 7,000-neuron daily estimate and per-run/chat buckets limit Titan's own requests; no paid-model fallback is configured. This branch is not yet deployed.
 - Bearer-token namespace isolation and compatibility with the existing Titan auth map.
 - Server-side conversation history; client-supplied history is ignored.
 - Additive D1 migrations for memory, knowledge, conversations, encrypted API tools, pending approvals, audit, daily quotas and training records.
@@ -60,7 +60,7 @@ The simulator is a fixed baseline, not a learned policy. Route-level disposable-
 
 ## Not done
 - No model weights have been trained or updated. RAG updates Titan's accessible knowledge without changing GPT-OSS weights; LoRA remains a separate, evaluated, human-reviewed candidate path.
-- Cloudflare's deployed titan-ai-core currently has only a D1 binding and no Cron Triggers. The proposed branch adds Workers AI and Workflow bindings, but it requires migration 0009 and an explicit deployment before live inference and twice-daily research become active.
+- Cloudflare's deployed titan-ai-core currently has only a D1 binding and no Cron Triggers. The proposed branch adds Workers AI and Workflow bindings, but it requires applying the pending repository migrations and an explicit deployment before live inference and twice-daily research become active.
 - No live D1 migration or production chat/tool test was run.
 - Teacher-generated examples now require the exact source quote to appear in both the source excerpt and response, matching the LoRA validator. The held-out scorer no longer rejects correct uncertainty statements as refusals.
 - Production authentication hardening, key rotation, advanced rate limiting and live end-to-end validation remain outstanding.
