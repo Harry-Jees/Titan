@@ -1,7 +1,7 @@
 import hashlib
 import unittest
 
-from training.auto_train import build_dataset
+from training.auto_train import build_dataset, is_public_source
 
 
 class AutoTrainTests(unittest.TestCase):
@@ -16,6 +16,12 @@ class AutoTrainTests(unittest.TestCase):
             "source_excerpt": excerpt,
             "source_excerpt_sha256": hashlib.sha256(excerpt.encode("utf-8")).hexdigest(),
         }
+
+    def test_rejects_private_and_non_https_sources(self):
+        self.assertFalse(is_public_source("https://127.0.0.1/private"))
+        self.assertFalse(is_public_source("https://localhost/private"))
+        self.assertFalse(is_public_source("http://example.org/page"))
+        self.assertTrue(is_public_source("https://example.org/page"))
 
     def test_accepts_only_hash_verified_grounded_public_examples(self):
         rows = build_dataset([self.make_row()])
