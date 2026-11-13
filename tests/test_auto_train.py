@@ -33,7 +33,7 @@ class AutoTrainTests(unittest.TestCase):
 
     def test_rejects_quote_not_in_answer_or_excerpt(self):
         row = self.make_row()
-        row["source_excerpt"] = "This excerpt deliberately omits the supporting evidence."
+        row["source_excerpt"] = ("This excerpt deliberately omits the supporting evidence and contains enough unrelated context to pass the length check. " * 3)
         row["source_excerpt_sha256"] = hashlib.sha256(row["source_excerpt"].encode("utf-8")).hexdigest()
         self.assertEqual(build_dataset([row]), [])
 
