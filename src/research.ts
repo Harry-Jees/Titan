@@ -11,15 +11,32 @@ export function isSafePublicUrl(value:string):boolean{
 export function normalizeResearchUrl(value:string,base?:string):string{
  try{const u=base?new URL(value,base):new URL(value);if(!isSafePublicUrl(u.href))return "";u.hash="";u.search="";u.username="";u.password="";return u.href.replace(/\/$/,"");}catch{return "";}
 }
+function robotsPathMatches(path:string,rulePath:string):boolean{
+ const anchored=rulePath.endsWith("$"),pattern=anchored?rulePath.slice(0,-1):rulePath,parts=pattern.split("*");
+ let cursor=0;
+ for(let i=0;i<parts.length;i++){
+  const part=parts[i];if(!part)continue;
+  const found=path.indexOf(part,cursor);
+  if(found<0||(i===0&&!pattern.startsWith("*")&&found!==0))return false;
+  cursor=found+part.length;
+ }
+ return anchored?cursor===path.length:true;
+}
 export function robotsAllows(body:string,path:string):boolean{
- const lines=body.split(/\r?\n/).map(x=>x.split("#",1)[0].trim()).filter(Boolean),groups:{agents:string[];rules:{allow:boolean;path:string}[]}[]=[];
+ const lines=body.split(/\r?\n/).map(x=>x.split("#",1)[0].trim()).filter(Boolean);
+ const groups:{agents:string[];rules:{allow:boolean;path:string}[]}[]=[];
  let current:{agents:string[];rules:{allow:boolean;path:string}[]}|null=null;
- for(const line of lines){const i=line.indexOf(":");if(i<0)continue;const key=line.slice(0,i).trim().toLowerCase(),value=line.slice(i+1).trim();
- if(key==="user-agent"){if(!current||current.rules.length){current={agents:[],rules:[]};groups.push(current);}current.agents.push(value.toLowerCase());}
- else if((key==="allow"||key==="disallow")&&current&&value)current.rules.push({allow:key==="allow",path:value});}
+ for(const line of lines){
+  const i=line.indexOf(":");if(i<0)continue;
+  const key=line.slice(0,i).trim().toLowerCase(),value=line.slice(i+1).trim();
+  if(key==="user-agent"){
+   if(!current||current.rules.length){current={agents:[],rules:[]};groups.push(current);}
+   current.agents.push(value.toLowerCase());
+  }else if((key==="allow"||key==="disallow")&&current&&value)current.rules.push({allow:key==="allow",path:value});
+ }
  const rules=groups.filter(g=>g.agents.some(a=>a==="*"||USER_AGENT.toLowerCase().includes(a))).flatMap(g=>g.rules);
- const matches=rules.filter(rule=>{const anchored=rule.path.endsWith("$"),pattern=anchored?rule.path.slice(0,-1):rule.path;const escaped=pattern.split("*").map(part=>part.replace(/[.+?^${}()|[\\]\\\\]/g,"\\\\ const rules=groups.filter(g=>g.agents.some(a=>a==="*"||USER_AGENT.toLowerCase().includes(a))).flatMap(g=>g.rules);
- const match=rules.filter(r=>path.startsWith(r.path)).sort((a,b)=>b.path.length-a.path.length);return !match.length||match[0].allow;")).join(".*");return new RegExp("^"+escaped+(anchored?"$":"")).test(path);}).sort((a,b)=>b.path.replace(/\\*/g,"").length-a.path.replace(/\\*/g,"").length||Number(b.allow)-Number(a.allow));
+ const matches=rules.filter(rule=>robotsPathMatches(path,rule.path))
+  .sort((a,b)=>b.path.split("*").join("").length-a.path.split("*").join("").length||Number(b.allow)-Number(a.allow));
  return !matches.length||matches[0].allow;
 }
 function decodeEntities(s:string):string{return s.replace(/&nbsp;/gi," ").replace(/&amp;/gi,"&").replace(/&lt;/gi,"<").replace(/&gt;/gi,">").replace(/&quot;/gi,'"').replace(/&#39;/gi,"'").replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(Number(n))).replace(/&#x([0-9a-f]+);/gi,(_,n)=>String.fromCodePoint(parseInt(n,16)));}
