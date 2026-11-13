@@ -46,7 +46,7 @@ export async function learnFromPage(env:Env,page:ResearchPage,runId:string):Prom
    "quality_score is 0..1 and measures clarity/evidence quality, not website popularity."
   ].join("\n")},
   {role:"user",content:"SOURCE URL: "+page.canonicalUrl+"\nTITLE: "+page.title+"\nEXISTING TITAN KNOWLEDGE (context only):\n"+prior.context.slice(0,3500)+"\nUNTRUSTED PAGE TEXT BEGIN\n"+page.text.slice(0,11000)+"\nUNTRUSTED PAGE TEXT END"}
- ],{bucket:"research:"+runId,bucketLimit:3500,maxOutputTokens:900});
+ ],{bucket:"research:"+runId,bucketLimit:3500,maxOutputTokens:900,jsonMode:true});
  const analysis=parseAnalysis(result.text);if(analysis.summary.length<30)throw new Error("GPT-OSS produced an unhelpful summary.");
  const validFacts=analysis.facts.filter(f=>f.evidence_quote.trim().length>=24&&page.text.includes(f.evidence_quote.trim())&&f.subject.trim().length>1&&f.predicate.trim().length>1&&f.object.trim().length>1);
  const units:{kind:string;content:string}[]=[{kind:"overview",content:"Knowledge overview\n"+analysis.summary+"\nTopics: "+analysis.topics.join(", ")}];
