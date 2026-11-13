@@ -22,7 +22,7 @@ export function normalizeFactKey(fact:Pick<Fact,"subject"|"predicate"|"object">)
 export async function indexKnowledgeChunk(env:Env,input:{sourceUrl:string;title:string;content:string;summary?:string;topics?:string[];kind?:string;sourceHash?:string;qualityScore?:number},bucket="chat",bucketLimit=2000):Promise<boolean>{
  const content=input.content.trim().slice(0,5000);if(!content||!/^https?:\/\//.test(input.sourceUrl))return false;
  const contentHash=await sha256(input.sourceUrl+"\n"+(input.kind||"source")+"\n"+content);let embeddingJson:string|null=null;
- try{const [vector]=await embedTexts(env,[content.slice(0,3500)],bucket,bucketLimit);embeddingJson=encodeVector(vector);}catch{/* retain lexical knowledge */}
+ try{const [vector]=await embedTexts(env,[content.slice(0,2500)],bucket,bucketLimit);embeddingJson=encodeVector(vector);}catch{/* retain lexical knowledge */}
  const result=await env.DB.prepare("INSERT OR IGNORE INTO knowledge_units(id,source_url,title,content,content_hash,summary,topics_json,kind,embedding_json,embedding_model,source_hash,quality_score) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)")
  .bind(crypto.randomUUID(),input.sourceUrl.slice(0,2048),input.title.slice(0,300),content,contentHash,(input.summary||"").slice(0,1600),
  JSON.stringify((input.topics||[]).slice(0,10)),input.kind||"source",embeddingJson,embeddingJson?"@cf/baai/bge-m3":null,input.sourceHash||"",Math.max(0,Math.min(1,input.qualityScore??0.5))).run();
@@ -31,7 +31,7 @@ export async function indexKnowledgeChunk(env:Env,input:{sourceUrl:string;title:
 
 /** GPT-OSS converts a page into reusable concepts and evidence-backed facts, not a page mirror. */
 export async function learnFromPage(env:Env,page:ResearchPage,runId:string):Promise<{factsAdded:number;chunksAdded:number;summary:string}>{
- const prior=await retrieveKnowledge(env,page.title+"\n"+page.text.slice(0,1200),"research:"+runId,3500);
+ const prior=await retrieveKnowledge(env,page.title+"\n"+page.text.slice(0,1200),"research:"+runId,2500);
  const result=await complete(env,[
   {role:"system",content:[
    "You are Titan's knowledge analyst. Learn useful knowledge; do not copy a page wholesale.",
@@ -45,15 +45,15 @@ export async function learnFromPage(env:Env,page:ResearchPage,runId:string):Prom
    "novelty is new, corroboration, update, contradiction, or low-value after comparison with the prior knowledge below.",
    "quality_score is 0..1 and measures clarity/evidence quality, not website popularity."
   ].join("\n")},
-  {role:"user",content:"SOURCE URL: "+page.canonicalUrl+"\nTITLE: "+page.title+"\nEXISTING TITAN KNOWLEDGE (context only):\n"+prior.context.slice(0,3500)+"\nUNTRUSTED PAGE TEXT BEGIN\n"+page.text.slice(0,11000)+"\nUNTRUSTED PAGE TEXT END"}
- ],{bucket:"research:"+runId,bucketLimit:3500,maxOutputTokens:900,jsonMode:true});
+  {role:"user",content:"SOURCE URL: "+page.canonicalUrl+"\nTITLE: "+page.title+"\nEXISTING TITAN KNOWLEDGE (context only):\n"+prior.context.slice(0,2500)+"\nUNTRUSTED PAGE TEXT BEGIN\n"+page.text.slice(0,11000)+"\nUNTRUSTED PAGE TEXT END"}
+ ],{bucket:"research:"+runId,bucketLimit:2500,maxOutputTokens:900,jsonMode:true});
  const analysis=parseAnalysis(result.text);if(analysis.summary.length<30)throw new Error("GPT-OSS produced an unhelpful summary.");
  const validFacts=analysis.facts.filter(f=>f.evidence_quote.trim().length>=24&&page.text.includes(f.evidence_quote.trim())&&f.subject.trim().length>1&&f.predicate.trim().length>1&&f.object.trim().length>1);
  const units:{kind:string;content:string}[]=[{kind:"overview",content:"Knowledge overview\n"+analysis.summary+"\nTopics: "+analysis.topics.join(", ")}];
  for(const c of analysis.concepts)units.push({kind:"concept",content:"Concept: "+c.name+"\nDefinition: "+c.definition+(c.importance?"\nWhy it matters: "+c.importance:"")});
  for(const f of validFacts)units.push({kind:"fact",content:"Fact: "+f.subject+" — "+f.predicate+" — "+f.object+(f.explanation?"\nExplanation: "+f.explanation:"")+"\nEvidence: "+f.evidence_quote});
  const bounded=units.slice(0,10);let vectors:number[][]=[];
- try{vectors=await embedTexts(env,bounded.map(u=>u.content.slice(0,3500)),"research:"+runId,3500);}catch{/* FTS remains usable */}
+ try{vectors=await embedTexts(env,bounded.map(u=>u.content.slice(0,2500)),"research:"+runId,2500);}catch{/* FTS remains usable */}
  let chunksAdded=0;
  for(let i=0;i<bounded.length;i++){
   const unit=bounded[i],hash=await sha256(page.canonicalUrl+"\n"+unit.kind+"\n"+unit.content);
