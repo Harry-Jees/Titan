@@ -19,7 +19,10 @@ export class TitanResearchWorkflow extends WorkflowEntrypoint<Env,ResearchParams
    return {seeded:RESEARCH_SEEDS.length};
   });
   let processed=0,pagesCrawled=0,factsAdded=0,chunksAdded=0,stopReason="",failedPages=0;
-  while(processed<maxPages&&Date.now()-startedAt<durationSeconds*1000){
+  while(processed<maxPages){
+   // Workflow replay must not branch on Date.now() outside a durable step.
+   const checkedAt=await step.do("check-research-deadline-"+processed,async()=>Date.now());
+   if(checkedAt-startedAt>=durationSeconds*1000){stopReason="time-limit";break;}
    const next=await step.do("claim-frontier-"+processed,async()=>{
     const row=await this.env.DB.prepare("SELECT url,depth FROM research_frontier WHERE status='queued' AND depth<=2 ORDER BY priority DESC,created_at ASC LIMIT 1").first<{url:string;depth:number}>();
     if(!row)return null;
