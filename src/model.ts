@@ -1,7 +1,7 @@
 import type { Env, ChatMessage } from "./types";
 import { reserveAiNeurons } from "./ai-budget";
 export type Completion = { text: string; model: string };
-export type CompletionOptions = { bucket?: string; bucketLimit?: number; maxOutputTokens?: number };
+export type CompletionOptions = { bucket?: string; bucketLimit?: number; maxOutputTokens?: number; jsonMode?: boolean };
 
 function extractText(result: any): string {
   const content = result?.choices?.[0]?.message?.content ?? result?.response ?? result?.output_text;
@@ -19,9 +19,9 @@ export async function complete(env: Env, messages: ChatMessage[], options: Compl
   const bucketLimit = options.bucketLimit ?? (bucket==="chat"?2000:3500);
   if (!await reserveAiNeurons(env,inputCharacters,maxOutputTokens,bucket,bucketLimit))
     throw new Error("Titan reached its protected daily free-inference budget. No paid fallback was attempted.");
-  const result = await env.AI.run("@cf/openai/gpt-oss-20b",{
-    messages,max_tokens:maxOutputTokens,temperature:0.2,
-  } as any) as any;
+  const input:any={messages,max_tokens:maxOutputTokens,temperature:0.2};
+  if(options.jsonMode)input.response_format={type:"json_object"};
+  const result = await env.AI.run("@cf/openai/gpt-oss-20b",input) as any;
   const text = extractText(result);
   if (!text) throw new Error("GPT-OSS returned no text. Check Workers AI capacity and response format.");
   return {text,model:"@cf/openai/gpt-oss-20b"};
