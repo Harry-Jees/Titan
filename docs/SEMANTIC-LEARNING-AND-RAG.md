@@ -18,7 +18,7 @@ The configured times are **06:00 and 18:00 Asia/Kolkata** (00:30 and 12:30 UTC).
 
 ## RAG
 
-At question time Titan embeds the query, combines semantic cosine similarity with D1 FTS5 keyword retrieval, selects a bounded evidence context, includes unresolved conflicting claims when relevant, and asks GPT-OSS-20B to answer with source URLs. The current D1 vector scan ranks the most recent 100 embedded units; FTS5 can retrieve older units. If the knowledge base grows substantially, move the vector scan to Cloudflare Vectorize without changing the knowledge-unit format.
+At question time Titan embeds the query, combines semantic cosine similarity with D1 FTS5 keyword retrieval, selects a bounded evidence context, includes unresolved conflicting claims when relevant, and asks GPT-OSS-20B to answer with source URLs. The current prototype caps each query at 10 normalized lexical terms, 30 FTS candidates (20 in the LIKE fallback), 100 recent embedded units, 8 regular evidence chunks and 8 conflict matches. The complete serialized context—including conflict evidence and separators—is capped at 10,000 characters; oversized evidence is skipped rather than appended past the budget. FTS5 can retrieve older units than the recent vector window. These are conservative prototype limits, not billion-scale infrastructure claims. If the knowledge base grows substantially, move vector retrieval to a dedicated ANN index without changing the knowledge-unit format.
 
 ## Model updates versus knowledge updates
 

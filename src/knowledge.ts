@@ -19,6 +19,37 @@ function parseAnalysis(raw:string):Analysis{
 async function sha256(value:string):Promise<string>{const h=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value));return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,"0")).join("");}
 export function normalizeFactKey(fact:Pick<Fact,"subject"|"predicate"|"object">):string{return [fact.subject,fact.predicate,fact.object].map(v=>v.toLowerCase().replace(/\s+/g," ").trim()).join("|");}
 
+export const KNOWLEDGE_RETRIEVAL_LIMITS = Object.freeze({
+ maxQueryCharacters:4000,
+ maxQueryTerms:10,
+ lexicalCandidates:30,
+ lexicalFallbackCandidates:20,
+ vectorCandidates:100,
+ conflictCandidates:8,
+ finalChunks:8,
+ chunkCharacters:1500,
+ contextCharacters:10000,
+});
+
+const SEARCH_STOP_WORDS = new Set([
+ "the","and","for","that","with","what","how","why","are","was","from","you","your",
+ "can","could","would","should","does","did","this","these","those","have","has","into","about","please","tell"
+]);
+
+export function knowledgeSearchTerms(query:string):string[]{
+ return [...new Set((query.slice(0,KNOWLEDGE_RETRIEVAL_LIMITS.maxQueryCharacters).toLowerCase().match(/[a-z0-9]{3,}/g)||[])
+  .filter(term=>!SEARCH_STOP_WORDS.has(term)))].slice(0,KNOWLEDGE_RETRIEVAL_LIMITS.maxQueryTerms);
+}
+
+function appendBoundedDocument(selected:string[],document:string,used:number):number{
+ const separator=selected.length?"\n\n---\n\n":"";
+ const added=separator.length+document.length;
+ if(used+added>KNOWLEDGE_RETRIEVAL_LIMITS.contextCharacters)return used;
+ selected.push(document);
+ return used+added;
+}
+
+
 export async function indexKnowledgeChunk(env:Env,input:{sourceUrl:string;title:string;content:string;summary?:string;topics?:string[];kind?:string;sourceHash?:string;qualityScore?:number},bucket="chat",bucketLimit=2000):Promise<boolean>{
  const content=input.content.trim().slice(0,5000);if(!content||!/^https?:\/\//.test(input.sourceUrl))return false;
  const contentHash=await sha256(input.sourceUrl+"\n"+(input.kind||"source")+"\n"+content);let embeddingJson:string|null=null;
@@ -89,45 +120,48 @@ export type KnowledgeSource={title:string;url:string;kind?:string;score?:number}
 /** Hybrid RAG: D1 FTS5 recall plus BGE-M3 semantic ranking over a bounded recent vector window. */
 export async function retrieveKnowledge(env:Env,query:string,bucket="chat",bucketLimit=2000):Promise<{context:string;sources:KnowledgeSource[]}>{
  const candidates=new Map<string,{id:string;source_url:string;title:string;content:string;summary:string;kind:string;score:number}>();
- const terms=[...new Set((query.toLowerCase().match(/[a-z0-9]{3,}/g)||[]).filter(t=>!["the","and","for","that","with","what","how","why","are","was","from","you","your","can","could","would","should","does","did","this","these","those","have","has","into","about","please","tell"].includes(t)))].slice(0,10);
+ const terms=knowledgeSearchTerms(query);
  if(terms.length){
   const match=terms.map(t=>'"'+t.replace(/"/g,'""')+'"').join(" OR ");
   try{
-   const rows=await env.DB.prepare("SELECT k.id,k.source_url,k.title,k.content,k.summary,k.kind,bm25(knowledge_units_fts) AS rank FROM knowledge_units_fts JOIN knowledge_units k ON k.rowid=knowledge_units_fts.rowid WHERE knowledge_units_fts MATCH ? ORDER BY rank LIMIT 30").bind(match).all<any>();
+   const rows=await env.DB.prepare("SELECT k.id,k.source_url,k.title,k.content,k.summary,k.kind,bm25(knowledge_units_fts) AS rank FROM knowledge_units_fts JOIN knowledge_units k ON k.rowid=knowledge_units_fts.rowid WHERE knowledge_units_fts MATCH ? ORDER BY rank LIMIT "+KNOWLEDGE_RETRIEVAL_LIMITS.lexicalCandidates).bind(match).all<any>();
    for(const row of rows.results||[])candidates.set(row.id,{...row,score:0.25/(1+Math.abs(Number(row.rank||0)))});
   }catch{
    const where=terms.map(()=>"content LIKE ? OR title LIKE ?").join(" OR "),likes=terms.flatMap(t=>["%"+t+"%","%"+t+"%"]);
    let rows:any;
    try {
-    rows=await env.DB.prepare("SELECT id,source_url,title,content,summary,kind FROM knowledge_units WHERE "+where+" ORDER BY created_at DESC LIMIT 20").bind(...likes).all<any>();
+    rows=await env.DB.prepare("SELECT id,source_url,title,content,summary,kind FROM knowledge_units WHERE "+where+" ORDER BY created_at DESC LIMIT "+KNOWLEDGE_RETRIEVAL_LIMITS.lexicalFallbackCandidates).bind(...likes).all<any>();
    } catch {
-    rows=await env.DB.prepare("SELECT id,source_url,title,content,'' AS summary,'legacy' AS kind FROM knowledge_chunks WHERE "+where+" ORDER BY created_at DESC LIMIT 20").bind(...likes).all<any>();
+    rows=await env.DB.prepare("SELECT id,source_url,title,content,'' AS summary,'legacy' AS kind FROM knowledge_chunks WHERE "+where+" ORDER BY created_at DESC LIMIT "+KNOWLEDGE_RETRIEVAL_LIMITS.lexicalFallbackCandidates).bind(...likes).all<any>();
    }
    for(const row of rows.results||[])candidates.set(row.id,{...row,score:0.1});
   }
  }
  try{
-  const [queryVector]=await embedTexts(env,[query.slice(0,3000)],bucket,bucketLimit);
-  const recent=await env.DB.prepare("SELECT id,source_url,title,content,summary,kind,embedding_json FROM knowledge_units WHERE embedding_json IS NOT NULL ORDER BY created_at DESC LIMIT 100").all<any>();
+  const [queryVector]=await embedTexts(env,[query.slice(0,KNOWLEDGE_RETRIEVAL_LIMITS.maxQueryCharacters)],bucket,bucketLimit);
+  const recent=await env.DB.prepare("SELECT id,source_url,title,content,summary,kind,embedding_json FROM knowledge_units WHERE embedding_json IS NOT NULL ORDER BY created_at DESC LIMIT "+KNOWLEDGE_RETRIEVAL_LIMITS.vectorCandidates).all<any>();
   for(const row of recent.results||[]){const vector=decodeVector(String(row.embedding_json||""));if(!vector.length)continue;
    const score=Math.max(0,cosineSimilarity(queryVector,vector))*0.75+(candidates.get(row.id)?.score||0);
    candidates.set(row.id,{...row,score});}
  }catch{/* lexical retrieval remains available when embeddings are over budget */}
- const ranked=[...candidates.values()].sort((a,b)=>b.score-a.score).slice(0,8),selected:string[]=[],sources:KnowledgeSource[]=[];let used=0;
+ const ranked=[...candidates.values()].sort((a,b)=>b.score-a.score).slice(0,KNOWLEDGE_RETRIEVAL_LIMITS.finalChunks),selected:string[]=[],sources:KnowledgeSource[]=[];let used=0;
  for(const item of ranked){
-  const doc="[Knowledge: "+item.kind+"] "+(item.title||"Untitled")+"\nSource: "+item.source_url+"\n"+(item.summary?"Context: "+item.summary+"\n":"")+item.content.slice(0,1500);
-  if(used+doc.length>10000)continue;selected.push(doc);used+=doc.length;
+  const doc="[Knowledge: "+item.kind+"] "+(item.title||"Untitled")+"\nSource: "+item.source_url+"\n"+(item.summary?"Context: "+item.summary+"\n":"")+item.content.slice(0,KNOWLEDGE_RETRIEVAL_LIMITS.chunkCharacters);
+  const nextUsed=appendBoundedDocument(selected,doc,used);if(nextUsed===used)continue;used=nextUsed;
   if(!sources.some(s=>s.url===item.source_url))sources.push({title:item.title||"Source",url:item.source_url,kind:item.kind,score:item.score});
  }
  if(terms.length){
   try{
    const conflictWhere=terms.map(()=>"lower(f.subject) LIKE ? OR lower(f.predicate) LIKE ? OR lower(f.object) LIKE ?").join(" OR ");
    const conflictLikes=terms.flatMap(term=>["%"+term+"%","%"+term+"%","%"+term+"%"]);
-   const conflicts=await env.DB.prepare("SELECT f.subject,f.predicate,f.object,f.explanation,e.source_url,e.quote FROM knowledge_facts f JOIN knowledge_evidence e ON e.fact_id=f.id WHERE f.status='conflicting' AND ("+conflictWhere+") ORDER BY f.updated_at DESC LIMIT 8").bind(...conflictLikes).all<any>();
-   if((conflicts.results||[]).length){
-    const docs=(conflicts.results||[]).map((row:any)=>"Unresolved conflicting evidence: "+row.subject+" — "+row.predicate+" — "+row.object+"\\n"+(row.explanation||"")+"\\nSource: "+row.source_url+"\\nEvidence: "+row.quote);
-    selected.push("[Titan has not resolved these conflicting claims. Present them as competing evidence, not settled facts.]\\n"+docs.join("\\n\\n"));
-    for(const row of conflicts.results||[])if(!sources.some(source=>source.url===row.source_url))sources.push({title:"Conflicting evidence",url:row.source_url,kind:"conflict"});
+   const conflicts=await env.DB.prepare("SELECT f.subject,f.predicate,f.object,f.explanation,e.source_url,e.quote FROM knowledge_facts f JOIN knowledge_evidence e ON e.fact_id=f.id WHERE f.status='conflicting' AND ("+conflictWhere+") ORDER BY f.updated_at DESC LIMIT "+KNOWLEDGE_RETRIEVAL_LIMITS.conflictCandidates).bind(...conflictLikes).all<any>();
+   let conflictHeaderPending=true;
+   for(const row of conflicts.results||[]){
+    const doc=(conflictHeaderPending?"[Titan has not resolved these conflicting claims. Present them as competing evidence, not settled facts.]\n":"")+
+     "Unresolved conflicting evidence: "+String(row.subject||"").slice(0,300)+" — "+String(row.predicate||"").slice(0,300)+" — "+String(row.object||"").slice(0,600)+
+     "\n"+String(row.explanation||"").slice(0,600)+"\nSource: "+String(row.source_url||"").slice(0,2048)+"\nEvidence: "+String(row.quote||"").slice(0,500);
+    const nextUsed=appendBoundedDocument(selected,doc,used);if(nextUsed===used)continue;used=nextUsed;conflictHeaderPending=false;
+    if(!sources.some(source=>source.url===row.source_url))sources.push({title:"Conflicting evidence",url:row.source_url,kind:"conflict"});
    }
   }catch{/* conflict tables are introduced by the semantic migration */}
  }
