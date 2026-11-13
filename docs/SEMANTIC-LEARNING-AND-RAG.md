@@ -2,7 +2,7 @@
 
 ## Runtime architecture
 
-Titan's Cloudflare Worker is the application runtime. Native Cloudflare Cron Triggers start a durable Cloudflare Workflow twice daily; GitHub Actions do not start research. The Workflow has a 30-minute wall-clock budget and persists progress across Worker isolate restarts.
+Titan's Cloudflare Worker is the application runtime. Native Cloudflare Cron Triggers start a durable Cloudflare Workflow twice daily; GitHub Actions do not start research. The Workflow has a 30-minute wall-clock budget and persists progress across Worker isolate restarts. Each run is capped at 180 pages (about 900 durable steps plus overhead), below the Free-plan 1,024-step per-instance limit; the two runs remain below the 3,000 included daily Workflow steps under normal operation. Each step is kept small for the Free-plan CPU limit.
 
 The configured times are **06:00 and 18:00 Asia/Kolkata** (00:30 and 12:30 UTC). Cloudflare Cron expressions use UTC.
 
@@ -17,7 +17,7 @@ The configured times are **06:00 and 18:00 Asia/Kolkata** (00:30 and 12:30 UTC).
 
 ## RAG
 
-At question time Titan embeds the query, combines semantic cosine similarity with D1 FTS5 keyword retrieval, selects a bounded evidence context, includes unresolved conflicting claims when relevant, and asks GPT-OSS-20B to answer with source URLs. The current D1 vector scan ranks the most recent 250 embedded units; FTS5 can retrieve older units. If the knowledge base grows substantially, move the vector scan to Cloudflare Vectorize without changing the knowledge-unit format.
+At question time Titan embeds the query, combines semantic cosine similarity with D1 FTS5 keyword retrieval, selects a bounded evidence context, includes unresolved conflicting claims when relevant, and asks GPT-OSS-20B to answer with source URLs. The current D1 vector scan ranks the most recent 100 embedded units; FTS5 can retrieve older units. If the knowledge base grows substantially, move the vector scan to Cloudflare Vectorize without changing the knowledge-unit format.
 
 ## Model updates versus knowledge updates
 
