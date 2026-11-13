@@ -85,7 +85,7 @@ def build_dataset(exported: list[dict]) -> list[dict]:
         subject = str(row.get("instruction", "")).strip()
         response = str(row.get("response", "")).strip()
         digest = str(row.get("source_excerpt_sha256", "")).strip().lower()
-        if not is_public_source(source) or not quote or len(subject) < 12 or len(response) < 30:
+        if not is_public_source(source) or not quote or len(subject) < 12 or len(response) < 30 or len(excerpt) < 200:
             continue
         if normalize(quote) not in normalize(excerpt) or normalize(quote) not in normalize(response):
             continue
