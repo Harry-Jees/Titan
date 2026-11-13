@@ -1,22 +1,27 @@
-import { describe, expect, it } from "vitest";
-import { complete } from "../src/model";
+import {describe,expect,it} from "vitest";
+import {complete} from "../src/model";
 
-describe("Titan local-only inference boundary", () => {
-  it("never calls Workers AI or a hosted model provider", async () => {
-    let calls = 0;
-    const env = {
-      AI: { run: async () => { calls++; return { response: "should never run" }; } },
-      TITAN_API_BASE: "https://provider.example/v1",
-      TITAN_API_KEY: "test-only-key",
-      TITAN_MODEL: "remote-model"
-    } as any;
-    await expect(complete(env, [{ role: "user", content: "hello" }]))
-      .rejects.toThrow("No cloud model was called");
-    expect(calls).toBe(0);
-  });
-
-  it("fails closed even when no local model runtime is configured", async () => {
-    await expect(complete({} as any, [{ role: "user", content: "hello" }]))
-      .rejects.toThrow("Titan's own local model is not connected yet");
-  });
+function fakeDb(allow=true):any{
+ return {prepare:()=>({bind:()=>({first:async()=>allow?{reserved_neurons:120}:null})})};
+}
+describe("Titan GPT-OSS inference boundary",()=>{
+ it("calls only the configured GPT-OSS-20B Workers AI model",async()=>{
+  const calls:any[]=[];
+  const env={DB:fakeDb(),AI:{run:async(model:string,input:any)=>{calls.push({model,input});return {choices:[{message:{content:"Reasoned response"}}]};}}} as any;
+  const result=await complete(env,[{role:"user",content:"hello"}]);
+  expect(result.text).toBe("Reasoned response");
+  expect(result.model).toBe("@cf/openai/gpt-oss-20b");
+  expect(calls).toHaveLength(1);
+  expect(calls[0].model).toBe("@cf/openai/gpt-oss-20b");
+  expect(calls[0].input.reasoning_effort).toBe("medium");
+ });
+ it("fails closed when the protected free-inference budget is exhausted",async()=>{
+  let calls=0;
+  const env={DB:fakeDb(false),AI:{run:async()=>{calls++;return {response:"should not run"};}}} as any;
+  await expect(complete(env,[{role:"user",content:"hello"}])).rejects.toThrow("protected daily free-inference budget");
+  expect(calls).toBe(0);
+ });
+ it("fails clearly when the Workers AI binding is missing",async()=>{
+  await expect(complete({DB:fakeDb()} as any,[{role:"user",content:"hello"}])).rejects.toThrow("Workers AI binding is missing");
+ });
 });
