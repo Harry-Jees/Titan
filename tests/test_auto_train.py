@@ -20,6 +20,11 @@ class AutoTrainTests(unittest.TestCase):
             "source_excerpt_sha256": hashlib.sha256(excerpt.encode("utf-8")).hexdigest(),
         }
 
+    def test_rejects_personal_data_and_secret_shaped_examples(self):
+        row = self.make_row()
+        row["response"] += " Contact admin@example.com"
+        self.assertEqual(build_dataset([row]), [])
+
     def test_rejects_private_and_non_https_sources(self):
         self.assertFalse(is_public_source("https://127.0.0.1/private"))
         self.assertFalse(is_public_source("https://localhost/private"))
