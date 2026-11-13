@@ -2,7 +2,7 @@
 
 ## Runtime architecture
 
-Titan's Cloudflare Worker is the application runtime. Native Cloudflare Cron Triggers start a durable Cloudflare Workflow twice daily; GitHub Actions do not start research. The Workflow has a 30-minute wall-clock budget and persists progress across Worker isolate restarts. Each run is capped at 180 pages and uses about 362 durable steps, below the Free-plan 1,024-step per-instance limit. Including one pacing sleep per page, the two runs use about 1,084 billable step operations/day, below the 3,000/day Free allowance under normal operation. Each step is kept small for the Free-plan 10 ms CPU limit. The 1,024-step per-instance limit excludes step.sleep calls. Raw page text remains in step memory and is not persisted in Workflow state or D1.
+Titan's Cloudflare Worker is the application runtime. Native Cloudflare Cron Triggers start a durable Cloudflare Workflow twice daily; GitHub Actions do not start research. The Workflow has a 30-minute wall-clock budget and persists progress across Worker isolate restarts. Each run is capped at 180 pages and uses about 542 durable steps (initialization, deadline checks, frontier claims, page processing, and completion), below the Free-plan 1,024-step per-instance limit. Including one pacing sleep per page, the two runs use about 1,444 billable step operations/day, below the 3,000/day Free allowance under normal operation. Each step is kept small for the Free-plan 10 ms CPU limit. The 1,024-step per-instance limit excludes step.sleep calls. Raw page text remains in step memory and is not persisted in Workflow state or D1.
 
 The configured times are **06:00 and 18:00 Asia/Kolkata** (00:30 and 12:30 UTC). Cloudflare Cron expressions use UTC.
 
