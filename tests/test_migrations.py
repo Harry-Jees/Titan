@@ -204,7 +204,7 @@ class MigrationTests(unittest.TestCase):
         columns = {row[1] for row in db.execute("PRAGMA table_info(knowledge_units)")}
         self.assertTrue({"summary", "topics_json", "kind", "embedding_json", "source_hash", "quality_score"}.issubset(columns))
         for table in ("knowledge_facts", "knowledge_evidence", "research_pages", "research_runs",
-                      "research_frontier", "research_robots", "ai_daily_usage"):
+                      "research_frontier", "research_robots", "ai_daily_usage", "titan_semantic_migrations"):
             self.assertIsNotNone(db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone())
         db.execute(
             "INSERT INTO knowledge_units(id,source_url,title,content,content_hash,summary) VALUES(?,?,?,?,?,?)",
