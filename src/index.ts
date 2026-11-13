@@ -57,7 +57,7 @@ export default {
           const quote = String(row.quote || "").trim();
           const excerpt = String(row.content || "").slice(0, 6500);
           const normalized = (value:string) => value.replace(/\\s+/g," ").trim().toLowerCase();
-          if (!quote || !normalized(excerpt).includes(normalized(quote)) || !normalized(row.source_url).startsWith("https://")) return [];
+          if (!quote || !normalized(excerpt).includes(normalized(quote)) || !isPublicSourceUrl(row.source_url)) return [];
           const instruction = "According to the cited source, what is the relationship between " + row.subject + " and " + row.predicate + "?";
           const response = row.subject + " " + row.predicate + " " + row.object + ". Source evidence: \"" + quote + "\" Source: " + row.source_url;
           return [{ instruction, response, category:"factuality", source_url:row.source_url, supporting_quote:quote,
