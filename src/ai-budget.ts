@@ -1,5 +1,5 @@
 import type { Env } from "./types";
-const DAILY_NEURON_LIMIT = 9000;
+const DAILY_NEURON_LIMIT = 7000;
 const INPUT_NEURONS_PER_TOKEN = 18182 / 1_000_000;
 const OUTPUT_NEURONS_PER_TOKEN = 27273 / 1_000_000;
 const EMBEDDING_NEURONS_PER_TOKEN = INPUT_NEURONS_PER_TOKEN; // conservative ceiling
@@ -25,4 +25,4 @@ export async function reserveAiNeurons(env: Env, inputBytes: number, outputToken
     .first<{reserved_neurons:number}>();
   return !!result;
 }
-export const AI_BUDGETS = { dailyNeurons:9000, researchRunNeurons:3500, chatNeurons:2000, safetyMarginNeurons:1000 };
+export const AI_BUDGETS = { dailyNeurons:7000, researchRunNeurons:2500, chatNeurons:2000, safetyMarginNeurons:3000 };
