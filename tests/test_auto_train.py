@@ -6,7 +6,10 @@ from training.auto_train import build_dataset, is_public_source
 
 class AutoTrainTests(unittest.TestCase):
     def make_row(self, *, quote="The system stores evidence with provenance."):
-        excerpt = "A source document explains the system. " + quote + " Additional context makes this excerpt useful."
+        excerpt = ("A source document explains the system. " + quote +
+                   " Additional context makes this excerpt useful for understanding the broader research topic. " +
+                   "The page includes further details about the system, its design, and the evidence supporting the claim. " +
+                   "This additional sentence ensures the stored source excerpt is long enough for grounded training.")
         return {
             "instruction": "According to the cited source, what does Titan store?",
             "response": "Titan stores evidence with provenance. Source evidence: \"" + quote + "\" Source: https://example.org/research",
