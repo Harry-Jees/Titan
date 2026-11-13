@@ -2,7 +2,7 @@ import type { Env } from "./types";
 const DAILY_NEURON_LIMIT = 7000;
 const INPUT_NEURONS_PER_TOKEN = 18182 / 1_000_000;
 const OUTPUT_NEURONS_PER_TOKEN = 27273 / 1_000_000;
-const EMBEDDING_NEURONS_PER_TOKEN = 1073 / 1_000_000; // BGE-M3 published unit price
+const EMBEDDING_NEURONS_PER_TOKEN = 1075 / 1_000_000; // BGE-M3 published neuron rate
 
 /** Reserve against Cloudflare's 10,000-neuron free daily allocation before inference. */
 export async function reserveAiNeurons(env: Env, inputBytes: number, outputTokens: number,
