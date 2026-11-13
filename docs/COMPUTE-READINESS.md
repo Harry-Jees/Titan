@@ -4,7 +4,7 @@
 
 - ATL Sandbox account is on the Free plan with USD 0.00 available compute credit. Its account-level GPU catalog lists NVIDIA T4 16 GB, A10G 24 GB, L4 24 GB, RTX PRO 4500 32 GB and RTX PRO 6000 96 GB, but GPU entitlement is disabled for this account. Four existing sandboxes are stopped.
 - Hugging Face account `harryjees` is authenticated on the Free plan. The Jobs API is accessible, but there are no active jobs. A Jobs API call can create billable compute; Titan must not submit a job until the user explicitly approves a specific flavor, maximum runtime and estimated cost.
-- Cloudflare is connected and currently provides Titan's Workers AI inference path. Workers AI is not a LoRA fine-tuning GPU.
+- Cloudflare is connected. The deployed titan-ai-core Worker currently has only its D1 binding and no Cron Trigger; the proposed semantic-learning branch adds Workers AI and a durable Workflow. Workers AI is inference capacity, not a LoRA fine-tuning GPU.
 - TinyFish wallet and Firecrawl credits are reserved for their intended research tasks; neither is a model-training compute balance.
 
 No GPU, CPU job, training run, model download, billing change, secret update, database migration or deployment was started during this inspection.
@@ -47,3 +47,10 @@ To use ATL GPU compute, the account owner must explicitly upgrade/enable a GPU-c
 To use Hugging Face Jobs, the account owner must first review the Jobs billing page and confirm a maximum spend/runtime budget. The connected token already has Jobs API scope, but API access is not proof of free compute. No job has been submitted.
 
 If neither provider can be funded, use an existing local computer with a compatible NVIDIA GPU, or the explicit CPU fallback on a sufficiently provisioned machine. Do not silently switch to hosted paid inference or training.
+
+
+## GPT-OSS inference budget for the semantic-learning branch
+
+The proposed runtime uses OpenAI GPT-OSS-20B for reasoning and BGE-M3 for embeddings through the Cloudflare Workers AI binding. Cloudflare's current published free allocation is 10,000 neurons per UTC day. Titan's application-side reservation ceiling is 9,000 neurons/day, with up to 3,500 neurons per research run and 2,000 for chat; no paid fallback is configured. The reservation is deliberately conservative and may stop early. Check actual usage in the Cloudflare dashboard.
+
+The branch does not change the live Worker or apply D1 migration 0009. Deployment requires applying the migration and reviewing the new AI and Workflow bindings. No paid plan, credit purchase, secret, GPU job, or model training is started by this branch.
