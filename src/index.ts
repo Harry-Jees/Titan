@@ -51,7 +51,7 @@ export default {
           "INNER JOIN knowledge_evidence e ON e.fact_id=f.id " +
           "INNER JOIN knowledge_units k ON k.source_url=e.source_url " +
           "WHERE f.status='evidence-backed' AND f.confidence>=0.75 " +
-          "ORDER BY f.updated_at DESC,e.created_at DESC LIMIT 5000"
+          "ORDER BY f.updated_at DESC,e.created_at DESC LIMIT 1000"
         ).all<{ subject:string;predicate:string;object:string;confidence:number;source_url:string;quote:string;title:string;content:string }>();
         const rows = (result.results || []).flatMap(row => {
           const quote = String(row.quote || "").trim();
