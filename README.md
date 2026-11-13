@@ -44,7 +44,7 @@ Optional secrets/vars:
 - TITAN_DAILY_REQUEST_LIMIT (default 200 per user per UTC day)
 - TITAN_TRAINING_CRON_SECRET (optional HTTP trigger secret for the training worker)
 
-Keep secrets out of source control. The semantic-learning branch connects GPT-OSS-20B and BGE-M3 through the Worker AI binding. Titan reserves at most 7,000 of the documented 10,000 free Workers AI neurons per UTC day and has no paid-model fallback. The live Worker is not updated by a branch push; apply the pending repository D1 migrations and deploy the reviewed branch before expecting this inference path to work. The live D1 ledger currently records only 0001–0002; CI includes a compatibility test against the observed live table shape.
+Keep secrets out of source control. The semantic-learning branch connects GPT-OSS-20B and BGE-M3 through the Worker AI binding. Titan reserves against a conservative 7,000-neuron daily estimate out of the documented 10,000 free Workers AI neurons per UTC day and has no paid-model fallback. Other Workers AI workloads in the same account share the free allocation. The live Worker is not updated by a branch push; apply the pending repository D1 migrations and deploy the reviewed branch before expecting this inference path to work. The live D1 ledger currently records only 0001–0002; CI includes a compatibility test against the observed live table shape.
 
 ## API
 - GET /health
