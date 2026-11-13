@@ -12,12 +12,12 @@ The configured times are **06:00 and 18:00 Asia/Kolkata** (00:30 and 12:30 UTC).
 2. Fetch public HTML pages only, obey robots.txt, do not automatically follow redirects, reject private/local/IP-literal URLs, cap response sizes, and pace requests.
 3. Ask GPT-OSS-20B to identify concise summaries, concepts, and facts. Page content is untrusted data, never instructions.
 4. Store a fact only when the model supplies a quote that exactly appears in the fetched page. Each fact retains its source URL, content hash, and evidence quote.
-5. Store synthesized knowledge units and metadata, not a mirror of every page. Deduplicate by stable content/fact hashes.
-6. Generate BGE-M3 embeddings and persist compact float32 vectors in D1. If embedding inference is unavailable, FTS retrieval remains available.
+6. Store synthesized knowledge units and metadata, not a mirror of every page. Deduplicate by stable content/fact hashes; unchanged pages are not re-analyzed and sources are refreshed weekly.
+7. Generate BGE-M3 embeddings and persist compact float32 vectors in D1. If embedding inference is unavailable, FTS retrieval remains available.
 
 ## RAG
 
-At question time Titan embeds the query, combines semantic cosine similarity with D1 FTS5 keyword retrieval, selects a bounded evidence context, and asks GPT-OSS-20B to answer with source URLs. The current D1 vector scan ranks the most recent 250 embedded units; FTS5 can retrieve older units. If the knowledge base grows substantially, move the vector scan to Cloudflare Vectorize without changing the knowledge-unit format.
+At question time Titan embeds the query, combines semantic cosine similarity with D1 FTS5 keyword retrieval, selects a bounded evidence context, includes unresolved conflicting claims when relevant, and asks GPT-OSS-20B to answer with source URLs. The current D1 vector scan ranks the most recent 250 embedded units; FTS5 can retrieve older units. If the knowledge base grows substantially, move the vector scan to Cloudflare Vectorize without changing the knowledge-unit format.
 
 ## Model updates versus knowledge updates
 
