@@ -12,7 +12,8 @@ export class TitanResearchWorkflow extends WorkflowEntrypoint<Env,ResearchParams
   const startedAt=scheduledAt,maxPages=240;
   await step.do("initialize-research-run",async()=>{
    await this.env.DB.prepare("INSERT OR IGNORE INTO research_runs(run_id,status,scheduled_at,started_at) VALUES(?,'running',?,CURRENT_TIMESTAMP)").bind(runId,new Date(scheduledAt).toISOString()).run();
-   await this.env.DB.prepare("UPDATE research_frontier SET status='queued',updated_at=CURRENT_TIMESTAMP WHERE status IN ('learned','unchanged','skipped','failed') AND updated_at<datetime('now','-7 days')").run();
+   await this.env.DB.prepare("UPDATE research_frontier SET status='queued',updated_at=CURRENT_TIMESTAMP WHERE status IN ('learned','unchanged','skipped') AND updated_at<datetime('now','-7 days')").run();
+   await this.env.DB.prepare("UPDATE research_frontier SET status='queued',updated_at=CURRENT_TIMESTAMP WHERE status='failed' AND updated_at<datetime('now','-12 hours')").run();
    await this.env.DB.prepare("UPDATE research_frontier SET status='queued',updated_at=CURRENT_TIMESTAMP WHERE status='processing' AND updated_at<datetime('now','-1 hour')").run();
    await this.env.DB.batch(RESEARCH_SEEDS.map((url,index)=>this.env.DB.prepare("INSERT OR IGNORE INTO research_frontier(url,depth,priority,discovered_from,status) VALUES(?,0,?,'scheduled-seed','queued')").bind(url,100-index)));
    return {seeded:RESEARCH_SEEDS.length};
