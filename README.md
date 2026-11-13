@@ -1,16 +1,17 @@
 # Titan — personal autonomous AI agent
 
-Titan is a separate, cloud-first personal agent. This repository contains a portable Cloudflare Workers foundation for chat, persistent memory, API tools, opt-in conversation curation, source-attributed knowledge, research automation, evaluation and bounded self-building.
+Titan is a separate, cloud-first personal agent. This repository contains a portable Cloudflare Workers foundation for chat, persistent memory, API tools, opt-in conversation curation, source-attributed knowledge, autonomous research, evaluation and bounded self-building.
 
 **Deployment boundary:** the public preview runs as a separate Worker at [titan-ai-core.harryjees.workers.dev](https://titan-ai-core.harryjees.workers.dev/). It does not replace the existing live `titan-agent-api` or `titan-training-pipeline`. It reuses the existing `titan-memory` D1 database and creates only additive public-session and knowledge tables; existing rows and secrets are not rewritten.
 
 ## Stack
 - Cloudflare Workers + TypeScript
-- Cloudflare D1 for memory, conversations, knowledge, tool registry, approvals, audit, quotas and training records
+- Cloudflare D1 for the current prototype's memory, conversations, knowledge, tool registry, approvals, audit and quotas
 - GPT-OSS-20B reasoning through Workers AI, protected by a conservative daily free-neuron reservation budget
 - BGE-M3 embeddings and hybrid D1 FTS5 + vector RAG
 - Robots-aware public research crawler and source-attributed chunking
-- Evidence-only RAG-to-LoRA candidate training with a local GPU watcher; no hosted training or automatic promotion
+- **RAG is Titan's primary long-term learning system.** It stores versioned, evidence-backed knowledge outside model weights and retrieves only relevant context at answer time.
+- **LoRA training is optional experimentation only.** Titan does not require training, a local GPU, or model-weight updates to learn and use new information.
 - PR-only self-build workflow; no auto-merge. The separate public Worker auto-deploys only from `development/titan-foundation`.
 
 ## Local development
@@ -42,7 +43,7 @@ Optional secrets/vars:
 - TITAN_TOOL_HOST_ALLOWLIST (comma-separated exact trusted hostnames; no wildcards)
 - TITAN_TOOL_SECRET_* (optional Worker secrets referenced by server-managed tool definitions only)
 - TITAN_DAILY_REQUEST_LIMIT (default 200 per user per UTC day)
-- TITAN_TRAINING_CRON_SECRET (optional HTTP trigger secret for the training worker)
+- TITAN_TRAINING_CRON_SECRET (optional HTTP trigger secret for the optional training worker)
 
 Keep secrets out of source control. The semantic-learning branch connects GPT-OSS-20B and BGE-M3 through the Worker AI binding. Titan reserves against a conservative 7,000-neuron daily estimate out of the documented 10,000 free Workers AI neurons per UTC day and has no paid-model fallback. Other Workers AI workloads in the same account share the free allocation. The live Worker is not updated by a branch push; apply the pending repository D1 migrations and deploy the reviewed branch before expecting this inference path to work. The live D1 ledger currently records only 0001–0002; CI includes a compatibility test against the observed live table shape.
 
@@ -60,7 +61,7 @@ Keep secrets out of source control. The semantic-learning branch connects GPT-OS
 - GET /training/preferences, POST /training/preferences — explicit user opt-in/out
 - GET /training/examples, DELETE /training/examples?id=... — view or delete your own curation examples
 - GET /training/examples/export — export only your own approved examples as JSONL
-- POST /training/rag-export — admin-only export of evidence-backed public RAG facts for local LoRA candidate training
+- POST /training/rag-export — admin-only export of evidence-backed public RAG facts for optional local experiments
 - POST /training/examples/review — approve/reject one of your own candidate examples
 - POST /knowledge, GET /knowledge?q=... (admin token)
 - POST /evaluate (admin token)
@@ -71,10 +72,16 @@ Registered tools can be selected by the model and run with strict parameter allo
 
 ## Research and learning schedules
 - **06:00 AM and 06:00 PM IST:** native Cloudflare Worker Cron Triggers start durable 30-minute research workflows. GPT-OSS converts pages into evidence-backed facts, concepts and concise knowledge units; BGE-M3 embeddings and FTS5 power hybrid RAG. GitHub Actions do not trigger research.
-- **09:00 AM IST (03:30 UTC):** separate D1 curation worker. It processes only conversations from users who explicitly enable training_preferences, screens sensitive data, grades at most eight pairs and stores candidates. It does not update model weights.
-- **Candidate LoRA training:** the local watcher checks the RAG corpus every six hours and starts training only after evidence-count, source-diversity and local CUDA preflight thresholds pass. It trains and evaluates a candidate on the local machine; it never provisions a hosted GPU, calls a paid teacher API, or auto-promotes/deploys weights. The current Qwen student adapter does not modify GPT-OSS-20B.
+- **09:00 AM IST (03:30 UTC):** separate D1 curation worker. It processes only conversations from users who explicitly enable `training_preferences`, screens sensitive data, grades at most eight pairs and stores candidates. It does not update model weights.
+- **No training dependency:** the research → extraction → indexing → retrieval loop is the complete learning path. LoRA candidate training is an optional, separately invoked local experiment; Titan remains fully usable when no training machine exists.
 
 Crawling must respect source terms, robots rules, copyright, privacy and applicable law.
+
+## RAG scale and performance
+
+The current D1 FTS5 + cosine implementation is a functional prototype, **not a billion-page production index**. See [docs/RAG-SCALING-ARCHITECTURE.md](docs/RAG-SCALING-ARCHITECTURE.md) for the scale-out design. The key invariant is that query-time work is bounded: route to relevant partitions, retrieve a small candidate set using hybrid indexes, rerank only those candidates, and send a compact evidence pack to the reasoning model. Never scan the corpus or place the entire corpus in a prompt.
+
+The design separates raw source storage, metadata, lexical indexes, vector indexes and derived knowledge. It supports incremental ingestion, deduplication, hierarchical routing, sharding, replicas, caching, selective graph retrieval and gradual migration from the current D1 prototype. Billions of pages are an architectural target, not a claim about the current deployment or free-tier capacity.
 
 ## Self-building
 The self-build workflow is manual and bounded. It only proposes changes in approved source/test/docs paths, runs checks and opens a PR for human review. It cannot edit workflows, dependencies, secrets, deployment configuration or migrations, and never auto-merges.
