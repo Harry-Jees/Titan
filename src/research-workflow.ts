@@ -9,7 +9,7 @@ export class TitanResearchWorkflow extends WorkflowEntrypoint<Env,ResearchParams
  async run(event:WorkflowEvent<ResearchParams>,step:WorkflowStep):Promise<Record<string,unknown>>{
   const runId=event.payload.runId,scheduledAt=event.payload.scheduledAt||Date.now();
   const durationSeconds=Math.max(60,Math.min(1800,event.payload.durationSeconds||1800));
-  const startedAt=scheduledAt,maxPages=240;
+  const startedAt=scheduledAt,maxPages=200;
   await step.do("initialize-research-run",async()=>{
    await this.env.DB.prepare("INSERT OR IGNORE INTO research_runs(run_id,status,scheduled_at,started_at) VALUES(?,'running',?,CURRENT_TIMESTAMP)").bind(runId,new Date(scheduledAt).toISOString()).run();
    await this.env.DB.prepare("UPDATE research_frontier SET status='queued',updated_at=CURRENT_TIMESTAMP WHERE status IN ('learned','unchanged','skipped') AND updated_at<datetime('now','-7 days')").run();
