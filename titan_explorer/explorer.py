@@ -57,7 +57,7 @@ def _extract_keywords(text: str, limit: int = 12) -> list[str]:
     return [w for w,_ in sorted(counts.items(),key=lambda x:(-x[1],x[0]))[:limit]]
 
 def _summarize(text: str, max_sentences: int = 4) -> str:
-    sentences=re.split(r"(?<=[.!?])\\s+",re.sub(r"\\s+"," ",text).strip())
+    sentences=re.split(r"(?<=[.!?])\s+",re.sub(r"\s+"," ",text).strip())
     return " ".join(s.strip() for s in sentences if len(s.strip())>=45][:max_sentences])[:1200]
 
 class AutonomousExplorer:
@@ -119,7 +119,7 @@ class AutonomousExplorer:
             for node in soup(["script","style","noscript","svg","canvas","form","iframe","nav","footer"]): node.decompose()
             title=(soup.title.get_text(" ",strip=True) if soup.title else "")[:300]
             main=soup.find("main") or soup.find("article") or soup.body or soup
-            text=unescape(re.sub(r"\\s+"," ",main.get_text(" ",strip=True)))[:MAX_TEXT_CHARS]
+            text=unescape(re.sub(r"\s+"," ",main.get_text(" ",strip=True)))[:MAX_TEXT_CHARS]
             if len(text)<120: return None,[]
             links=[]
             for a in soup.find_all("a",href=True):
@@ -151,11 +151,11 @@ class AutonomousExplorer:
         except KeyboardInterrupt: self.stop_reason="user_stopped"
         return self._write_manifest()
     def _write_record(self,record):
-        with (self.output_dir/"pages.jsonl").open("a",encoding="utf-8") as f: f.write(json.dumps(asdict(record),ensure_ascii=False)+"\\n")
+        with (self.output_dir/"pages.jsonl").open("a",encoding="utf-8") as f: f.write(json.dumps(asdict(record),ensure_ascii=False)+"\n")
     def _write_manifest(self):
         elapsed=min(self.duration_seconds,max(0,time.monotonic()-self.started))
         manifest={"engine":"titan-autonomous-explorer","version":"0.1.0","started_at":datetime.fromtimestamp(time.time()-elapsed,timezone.utc).isoformat(),"finished_at":datetime.now(timezone.utc).isoformat(),"duration_seconds":round(elapsed,2),"configured_duration_seconds":self.duration_seconds,"pages_read":len(self.records),"unique_urls_attempted":len(self.visited),"frontier_remaining":len(self.frontier),"stop_reason":self.stop_reason,"robots_respected":True,"source_attribution":"Each page record includes its URL and SHA-256.","model_understanding":"Extractive summaries and keywords only; no model inference is invoked.","pages_file":"pages.jsonl"}
-        (self.output_dir/"session.json").write_text(json.dumps(manifest,indent=2)+"\\n",encoding="utf-8"); return manifest
+        (self.output_dir/"session.json").write_text(json.dumps(manifest,indent=2)+"\n",encoding="utf-8"); return manifest
 
 def main(argv=None):
     p=argparse.ArgumentParser(description="Explore the public web for up to 30 minutes.")
@@ -164,5 +164,5 @@ def main(argv=None):
     if not 0<a.minutes<=30: p.error("--minutes must be greater than 0 and no more than 30")
     logging.basicConfig(level=logging.INFO if a.verbose else logging.WARNING,format="%(asctime)s %(levelname)s %(message)s")
     try: result=AutonomousExplorer(a.output,int(a.minutes*60),a.max_pages).run(a.seed)
-    except ExplorationError as e: p.exit(2,f"Exploration could not start: {e}\\n")
+    except ExplorationError as e: p.exit(2,f"Exploration could not start: {e}\n")
     print(json.dumps(result,indent=2)); return 0
