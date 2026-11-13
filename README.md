@@ -7,7 +7,7 @@ Titan is a separate, cloud-first personal agent. This repository contains a port
 ## Stack
 - Cloudflare Workers + TypeScript
 - Cloudflare D1 for memory, conversations, knowledge, tool registry, approvals, audit, quotas and training records
-- GPT-OSS-20B reasoning through Workers AI, protected by a strict daily free-neuron budget
+- GPT-OSS-20B reasoning through Workers AI, protected by a conservative daily free-neuron reservation budget
 - BGE-M3 embeddings and hybrid D1 FTS5 + vector RAG
 - Robots-aware public research crawler and source-attributed chunking
 - Opt-in conversation curation; candidate LoRA training is separate and manual
@@ -31,7 +31,7 @@ Separate opt-in curation Worker: wrangler.training.toml, entry src/training-pipe
 
 `wrangler.toml` binds the existing `titan-memory` D1 database for the isolated public preview. `wrangler.training.toml` remains a separate configuration; use a development database ID for local/staging training tests.
 
-Required bindings: DB (D1) and AI (Workers AI).
+Required bindings: DB (D1), AI (Workers AI), and RESEARCH_WORKFLOW (Cloudflare Workflows).
 
 Optional secrets/vars:
 - TITAN_ADMIN_TOKEN
