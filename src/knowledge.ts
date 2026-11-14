@@ -37,8 +37,9 @@ const SEARCH_STOP_WORDS = new Set([
 ]);
 
 export function knowledgeSearchTerms(query:string):string[]{
- return [...new Set((query.slice(0,KNOWLEDGE_RETRIEVAL_LIMITS.maxQueryCharacters).toLowerCase().match(/[a-z0-9]{3,}/g)||[])
-  .filter(term=>!SEARCH_STOP_WORDS.has(term)))].slice(0,KNOWLEDGE_RETRIEVAL_LIMITS.maxQueryTerms);
+ const normalized=query.slice(0,KNOWLEDGE_RETRIEVAL_LIMITS.maxQueryCharacters).normalize("NFKC").toLowerCase();
+ const words=normalized.match(/[\p{L}\p{N}][\p{L}\p{M}\p{N}]{2,}/gu)||[];
+ return [...new Set(words.filter(term=>!SEARCH_STOP_WORDS.has(term)))].slice(0,KNOWLEDGE_RETRIEVAL_LIMITS.maxQueryTerms);
 }
 
 function appendBoundedDocument(selected:string[],document:string,used:number):number{

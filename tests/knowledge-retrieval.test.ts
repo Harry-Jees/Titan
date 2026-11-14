@@ -39,6 +39,19 @@ describe("bounded hybrid knowledge retrieval",()=>{
   expect(terms).toHaveLength(KNOWLEDGE_RETRIEVAL_LIMITS.maxQueryTerms);
  });
 
+ it("preserves Unicode and compatibility-normalized terms for multilingual retrieval",async()=>{
+  expect(knowledgeSearchTerms("the മലയാളം हिंदी Ａｌｐｈａ")).toEqual(["മലയാളം","हिंदी","alpha"]);
+
+  const {env,statements}=createEnv();
+  await retrieveKnowledge(env,"മലയാളം हिंदी");
+
+  const fts=statements.find(statement=>statement.sql.includes("knowledge_units_fts MATCH"));
+  const conflicts=statements.find(statement=>statement.sql.includes("knowledge_facts f"));
+  expect(fts?.params[0]).toBe('"മലയാളം" OR "हिंदी"');
+  expect(conflicts?.params).toContain("%മലയാളം%");
+  expect(conflicts?.params).toContain("%हिंदी%");
+ });
+
  it("keeps regular and conflicting evidence inside one total context budget",async()=>{
   const vectors=[
    {id:"semantic-1",source_url:"https://example.org/a",title:"A",content:"Short semantic evidence A.",summary:"",kind:"fact",embedding_json:encodedQueryVector},
