@@ -1,12 +1,13 @@
 # Titan crawler threat model and configuration contract
 
-Status: Day 3 Python crawler transport implementation. The shared
-`training.crawler_policy` module validates URLs, DNS answers, redirects and
-bounded configuration. `training.pinned_http` applies the policy at the
-connection boundary; both `training/crawl_web.py` and `titan_explorer`
-mount this adapter for their HTTP and HTTPS requests. The separate scheduled
-Cloudflare Worker research fetcher is not automatically covered by this
-Python transport and must retain its own outbound URL controls.
+Status: Python crawler transport is implemented; Worker-side arbitrary outbound
+fetch is disabled. The shared `training.crawler_policy` module validates URLs,
+DNS answers, redirects and bounded configuration. `training.pinned_http`
+applies the policy at the connection boundary; both `training/crawl_web.py`
+and `titan_explorer` use this adapter for HTTP and HTTPS requests. The
+Cloudflare Worker research fetch path and cron triggers are disabled because
+Workers `fetch()` cannot provide the required arbitrary-host DNS pinning and
+TLS identity guarantee. `POST /research/run` fails closed with HTTP 503.
 
 ## 1. Assets and trust boundaries
 
@@ -106,7 +107,30 @@ exhaustion states.
 | Prompt injection in page text | Remains untrusted retrieval content |
 | Invalid/oversized configuration | Fail startup; no unbounded fallback |
 
-## 6. Day 3 implementation boundary
+## 6. Worker outbound-fetch boundary
+
+The Cloudflare Worker must not use ordinary `fetch()` for arbitrary crawler
+URLs. The Workers `fetch()` API does not expose a supported per-request
+validated-IP pin while preserving the original origin TLS identity. The
+Workers TCP socket API exposes a hostname override for TLS, but it is not a
+reliable production-edge substitute for this guarantee. Therefore:
+
+- `src/research.ts` retains deterministic URL and content-extraction helpers,
+  but `fetchResearchPage` fails closed without making a network request.
+- The Worker research Workflow binding and twice-daily cron triggers are
+  removed from `wrangler.toml`.
+- `POST /research/run` returns HTTP 503 with an explicit explanation.
+- The admin research status endpoint remains read-only for existing records.
+- The Python crawler remains the supported outbound research path and uses
+  `training.pinned_http` to pin each validated destination IP.
+
+Do not re-enable Worker crawling until a separately operated egress service
+has an independently tested DNS-resolution-to-connection binding, correct TLS
+hostname verification, redirect revalidation, byte/time limits and an
+explicit service authentication boundary. A hostname allowlist alone is not
+a substitute for connection pinning.
+
+## 7. Day 3 implementation boundary
 
 The Python crawler entry points now use the shared policy and pinned transport.
 The deterministic transport tests verify that the socket destination is the
