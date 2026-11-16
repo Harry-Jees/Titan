@@ -52,7 +52,7 @@ def clean_url(value:str)->str:
     return p._replace(fragment="",query="").geturl().rstrip("/")
 
 def request_once(url:str):
-    host=urlparse(url).netloc
+    host=(urlparse(url).hostname or "").lower()
     wait=PER_HOST_DELAY-(time.monotonic()-LAST_HIT.get(host,0))
     if wait>0: time.sleep(wait)
     LAST_HIT[host]=time.monotonic()
