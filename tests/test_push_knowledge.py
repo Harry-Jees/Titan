@@ -55,5 +55,31 @@ class KnowledgePushTests(unittest.TestCase):
         second.close.assert_called_once()
 
 
+    def test_read_chunks_reserves_capacity_for_osint_records(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "cycle.jsonl"
+            pages = []
+            for index in range(8):
+                pages.append({
+                    "url": f"https://general.example.org/{index}",
+                    "title": f"General {index}",
+                    "text": (f"General knowledge item {index}. " * 20),
+                })
+            for index in range(4):
+                pages.append({
+                    "url": f"https://osint.example.org/{index}",
+                    "title": f"OSINT {index}",
+                    "source_id": "test-osint",
+                    "category": "threat-intelligence",
+                    "text": (f"Threat intelligence item {index}. " * 20),
+                })
+            path.write_text("\n".join(json.dumps(page) for page in pages), encoding="utf-8")
+            with patch("training.push_knowledge.CHUNK_LIMIT", 4):
+                chunks = read_chunks(path)
+        self.assertEqual(len(chunks), 4)
+        self.assertTrue(all(chunk["source_url"].startswith("https://osint.example.org/") for chunk in chunks[:2]))
+        self.assertTrue(all(chunk["source_url"].startswith("https://general.example.org/") for chunk in chunks[2:]))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -49,10 +49,12 @@ def split_text(value: str, limit: int = CHUNK_CHARS) -> Iterator[str]:
 
 
 def read_chunks(path: Path) -> list[dict[str, str]]:
-    output: list[dict[str, str]] = []
+    """Select a balanced mix so broad page crawling cannot starve OSINT feeds."""
+    osint_chunks: list[dict[str, str]] = []
+    general_chunks: list[dict[str, str]] = []
     seen: set[str] = set()
     if not path.exists():
-        return output
+        return []
     with path.open("r", encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, 1):
             if not line.strip():
@@ -67,21 +69,29 @@ def read_chunks(path: Path) -> list[dict[str, str]]:
             body = str(page.get("text") or "").strip()
             if not source.startswith("https://") or len(body) < 250:
                 continue
+            target = osint_chunks if page.get("source_id") else general_chunks
             for part_number, content in enumerate(split_text(body), 1):
                 fingerprint = hashlib.sha256((source + "\n" + content).encode()).hexdigest()
                 if fingerprint in seen:
                     continue
                 seen.add(fingerprint)
-                output.append({
+                target.append({
                     "source_url": source,
                     "title": f"{title} (part {part_number})"[:300],
                     "content": content[:5000],
                     "content_hash": fingerprint,
                 })
-                if len(output) >= CHUNK_LIMIT:
-                    return output
-    return output
 
+    # Reserve half the per-run ingestion capacity for OSINT records. If one
+    # pool is sparse, backfill unused capacity from the other pool.
+    osint_quota = min(len(osint_chunks), (CHUNK_LIMIT + 1) // 2)
+    general_quota = min(len(general_chunks), CHUNK_LIMIT - osint_quota)
+    remaining = CHUNK_LIMIT - osint_quota - general_quota
+    extra_osint = min(remaining, len(osint_chunks) - osint_quota)
+    osint_quota += extra_osint
+    remaining -= extra_osint
+    general_quota += min(remaining, len(general_chunks) - general_quota)
+    return osint_chunks[:osint_quota] + general_chunks[:general_quota]
 
 
 def build_batches(chunks: list[dict[str, str]]) -> list[list[dict[str, str]]]:
