@@ -9,19 +9,27 @@ import urllib.robotparser
 import xml.etree.ElementTree as ET
 import requests
 from bs4 import BeautifulSoup
+try:
+    from .crawler_policy import CrawlerConfig
+    from .pinned_http import UnsafeCrawlerURL, mount_pinned_transport, safe_get
+except ImportError:  # Direct script execution from the training directory.
+    from crawler_policy import CrawlerConfig
+    from pinned_http import UnsafeCrawlerURL, mount_pinned_transport, safe_get
 
 ROOT=Path(__file__).resolve().parent
 SEEDS=Path(os.getenv("TITAN_CRAWL_SEEDS",ROOT/"crawl_sources.txt"))
 OUT=Path(os.getenv("TITAN_CRAWL_OUT",ROOT/"crawled_pages.jsonl"))
 CYCLE_OUT=Path(os.getenv("TITAN_CYCLE_OUT",ROOT/"crawled_pages_cycle.jsonl"))
 STATE=Path(os.getenv("TITAN_CRAWL_STATE",ROOT/"crawl_state.json"))
-TARGET=max(1,int(os.getenv("TITAN_PAGE_TARGET","10000")))
-TIMEOUT=int(os.getenv("TITAN_FETCH_TIMEOUT","20"))
-PER_HOST_DELAY=max(1.0,float(os.getenv("TITAN_PER_HOST_DELAY","1.0")))
-MAX_BYTES=min(4_000_000,max(100_000,int(os.getenv("TITAN_MAX_PAGE_BYTES","4000000"))))
+CONFIG=CrawlerConfig.from_env()
+TARGET=CONFIG.page_target
+TIMEOUT=CONFIG.fetch_timeout
+PER_HOST_DELAY=CONFIG.per_host_delay
+MAX_BYTES=CONFIG.max_page_bytes
 CONTACT=os.getenv("TITAN_CRAWLER_CONTACT","").strip()
 UA=os.getenv("TITAN_CRAWLER_UA",f"TitanKnowledgeBot/0.1 (+contact: {CONTACT})" if CONTACT else "TitanKnowledgeBot/0.1 (configure contact before large-scale crawling)")
 SESSION=requests.Session()
+mount_pinned_transport(SESSION, config=CONFIG)
 SESSION.headers.update({"User-Agent":UA,"Accept":"text/html,application/xhtml+xml,application/xml,text/plain;q=0.8"})
 ROBOTS:dict[str,urllib.robotparser.RobotFileParser]={}
 LAST_HIT:dict[str,float]={}
@@ -30,8 +38,9 @@ def public_url(value:str)->bool:
     try:
         p=urlparse(value); host=(p.hostname or "").lower().rstrip(".")
         if p.scheme not in {"http","https"} or not host or p.username or p.password: return False
-        if p.port is not None and p.port not in {80,443}: return False
-        if host=="localhost" or host.endswith((".localhost",".local",".internal",".lan")): return False
+        if p.port is not None and p.port != (443 if p.scheme == "https" else 80): return False
+        if host=="localhost" or host.endswith((".localhost",".local",".internal",".lan",".home",".test",".invalid")): return False
+        if not CONFIG.host_allowed(host): return False
         try: return ipaddress.ip_address(host).is_global
         except ValueError: return "." in host and not host.startswith(".") and not host.endswith(".")
     except ValueError: return False
@@ -47,24 +56,36 @@ def request_once(url:str):
     wait=PER_HOST_DELAY-(time.monotonic()-LAST_HIT.get(host,0))
     if wait>0: time.sleep(wait)
     LAST_HIT[host]=time.monotonic()
+    response=None
     try:
-        response=SESSION.get(url,timeout=TIMEOUT,stream=True,allow_redirects=False)
-        # Redirects are not followed: each new host would need its own URL and robots check.
-        if response.is_redirect:
-            response.close(); return None,None,"redirect-skipped"
+        # safe_get validates every redirect; the mounted adapter resolves and
+        # pins the exact public address used for each TCP connection.
+        response=safe_get(SESSION,url,timeout=TIMEOUT,stream=True,
+                          max_redirects=5,same_host_redirects=True)
         if response.status_code!=200:
             code=response.status_code; response.close(); return None,None,code
         ctype=response.headers.get("content-type","").lower()
         if not any(x in ctype for x in ("text/html","application/xhtml+xml","application/xml","text/plain")):
             response.close(); return None,None,"non-text"
+        length=response.headers.get("content-length")
+        if length:
+            try:
+                if int(length)>MAX_BYTES:
+                    response.close(); return None,None,"too-large"
+            except ValueError:
+                response.close(); return None,None,"invalid-content-length"
         chunks=[]; total=0
         for chunk in response.iter_content(65536):
             total+=len(chunk)
-            if total>MAX_BYTES: response.close(); return None,None,"too-large"
+            if total>MAX_BYTES:
+                response.close(); return None,None,"too-large"
             chunks.append(chunk)
-        final=response.url; response.close()
+        final=response.url
+        response.close()
         return b"".join(chunks),final,200
-    except requests.RequestException as exc: return None,None,type(exc).__name__
+    except (requests.RequestException,UnsafeCrawlerURL,ValueError,OSError) as exc:
+        if response is not None: response.close()
+        return None,None,type(exc).__name__
 
 def allowed(url:str)->bool:
     p=urlparse(url); origin=f"{p.scheme}://{p.netloc}"
