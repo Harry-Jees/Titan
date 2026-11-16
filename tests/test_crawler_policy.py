@@ -1,8 +1,7 @@
 import socket
 import unittest
-from unittest.mock import patch
 
-from training.crawler_policy import resolve_public_url, validate_redirect
+from training.crawler_policy import CrawlerConfig, resolve_public_url, validate_redirect
 
 
 def answer(ip):
@@ -59,8 +58,8 @@ class CrawlerPolicyTests(unittest.TestCase):
         self.assertFalse(resolve_public_url("https://example.org:bad/").allowed)
 
     def test_relative_redirect_is_resolved_and_revalidated(self):
-        decision = validate_redirect("https://docs.example.org/a",
-                                     "/b", resolver=self.resolver("93.184.216.34"))
+        decision = validate_redirect("https://docs.example.org/a", "/b",
+                                     resolver=self.resolver("93.184.216.34"))
         self.assertTrue(decision.allowed)
         self.assertEqual(decision.normalized_url, "https://docs.example.org/b")
 
@@ -80,6 +79,29 @@ class CrawlerPolicyTests(unittest.TestCase):
                                      "http://public.example.org/",
                                      resolver=self.resolver("93.184.216.34"))
         self.assertEqual(decision.reason, "https_downgrade")
+
+    def test_config_defaults_and_host_allow_deny(self):
+        config = CrawlerConfig.from_env({
+            "TITAN_ALLOWED_DOMAINS": "example.org, docs.python.org",
+            "TITAN_DENIED_DOMAINS": "private.example.org",
+        })
+        self.assertEqual(config.page_target, 10_000)
+        self.assertTrue(config.host_allowed("api.example.org"))
+        self.assertFalse(config.host_allowed("private.example.org"))
+        self.assertFalse(config.host_allowed("elsewhere.net"))
+
+    def test_config_rejects_unbounded_or_invalid_values(self):
+        for values in (
+            {"TITAN_PAGE_TARGET": "0"},
+            {"TITAN_PAGE_TARGET": "10001"},
+            {"TITAN_FETCH_TIMEOUT": "999"},
+            {"TITAN_PER_HOST_DELAY": "0"},
+            {"TITAN_MAX_PAGE_BYTES": "99999999"},
+            {"TITAN_ALLOWED_DOMAINS": "https://example.org/path"},
+        ):
+            with self.subTest(values=values):
+                with self.assertRaises(ValueError):
+                    CrawlerConfig.from_env(values)
 
 
 if __name__ == "__main__":
