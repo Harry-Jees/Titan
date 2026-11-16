@@ -10,7 +10,7 @@ on:
       page_target:
         description: "Maximum new pages to crawl in this run (1–10000)"
         required: false
-        default: "180"
+        default: "600"
         type: string
 
 permissions:
@@ -25,13 +25,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 55
     env:
-      TITAN_PAGE_TARGET: ${{ inputs.page_target || '180' }}
+      TITAN_PAGE_TARGET: ${{ inputs.page_target || '600' }}
       TITAN_FETCH_TIMEOUT: "20"
       TITAN_PER_HOST_DELAY: "1"
       TITAN_MAX_PAGE_BYTES: "4000000"
       TITAN_API_BASE: ${{ vars.TITAN_API_BASE || 'https://titan-ai-core.harryjees.workers.dev' }}
       TITAN_ADMIN_TOKEN: ${{ secrets.TITAN_ADMIN_TOKEN }}
-      TITAN_INGEST_CHUNK_LIMIT: "300"
+      TITAN_INGEST_CHUNK_LIMIT: "1000"
     steps:
       - name: Check out Titan
         uses: actions/checkout@v4
@@ -80,6 +80,10 @@ jobs:
       - name: Crawl public sources using DNS-pinned transport
         if: steps.config.outputs.ready == 'true'
         run: python training/crawl_web.py
+
+      - name: Collect registered OSINT feeds using DNS-pinned transport
+        if: steps.config.outputs.ready == 'true'
+        run: python training/fetch_osint_feeds.py
 
       - name: Index new evidence into Titan RAG
         if: steps.config.outputs.ready == 'true'
