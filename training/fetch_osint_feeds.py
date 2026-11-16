@@ -127,7 +127,7 @@ def json_records(source: dict, payload):
             value = text_value(value_at(record, path))
             if value:
                 lines.append(f"{path}: {value}")
-        link = text_value(value_at(record, source.get("url_path", "")))
+        link = text_value(value_at(record, source["url_path"])) if source.get("url_path") else ""
         if link.startswith("https://") or link.startswith("http://"):
             source_url = link
         else:
