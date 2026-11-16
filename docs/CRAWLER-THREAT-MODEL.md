@@ -139,7 +139,8 @@ also cover private/mixed DNS rejection, domain allow/deny, proxy rejection and
 redirect downgrade/cross-host rejection. Robots fetches use the same bounded
 transport and fail closed on timeout, oversized content and non-404 errors.
 
-This does not claim that the scheduled Cloudflare Worker has been changed by
-the Python adapter. Its outbound fetch path requires a separate Worker-side
-audit and policy integration before making the same security claim. No live
-Worker deployment or D1 mutation is part of this milestone.
+The Worker-side outbound fetch path is now explicitly disabled, including its
+scheduled handler and cron triggers. It must not be re-enabled until a separate
+egoing service proves DNS-resolution-to-connection pinning and TLS identity
+verification on the production edge. No live Worker deployment or D1 mutation
+is part of this milestone.
