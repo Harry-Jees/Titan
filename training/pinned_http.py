@@ -134,6 +134,11 @@ class PinnedHTTPAdapter(HTTPAdapter):
             raise ProxyError("Crawler proxy use is disabled; direct pinned connections are required.")
         return self._pool_for_url(request.url)
 
+    def send(self, request, stream=False, timeout=None, verify=True, cert=None, proxies=None):
+        if verify is False:
+            raise requests.exceptions.SSLError("TLS certificate verification cannot be disabled for crawler requests.")
+        return super().send(request, stream=stream, timeout=timeout, verify=verify, cert=cert, proxies=proxies)
+
     def close(self):
         with self._pool_lock:
             for pool in self._pools.values():
