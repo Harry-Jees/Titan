@@ -13,6 +13,7 @@ import re
 import sys
 import time
 import urllib.robotparser
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import urlparse
@@ -41,14 +42,14 @@ ROBOTS: dict[str, urllib.robotparser.RobotFileParser] = {}
 LAST_HIT: dict[str, float] = {}
 
 
-def request(url: str):
+def request(url: str, headers: dict[str, str] | None = None):
     parsed = urlparse(url)
     host = (parsed.hostname or "").lower()
     wait = PER_HOST_DELAY - (time.monotonic() - LAST_HIT.get(host, 0))
     if wait > 0:
         time.sleep(wait)
     LAST_HIT[host] = time.monotonic()
-    response = safe_get(SESSION, url, timeout=CONFIG.fetch_timeout, stream=True, max_redirects=4, same_host_redirects=True)
+    response = safe_get(SESSION, url, headers=headers or {}, timeout=CONFIG.fetch_timeout, stream=True, max_redirects=4, same_host_redirects=True)
     if response.status_code != 200:
         status = response.status_code
         response.close()
@@ -192,11 +193,32 @@ def main() -> int:
                 totals["skipped"] += 1
                 continue
             try:
+                headers = {}
+                request_url = url
+                header_env = source.get("auth_header_env")
+                if header_env:
+                    token = os.getenv(header_env, "").strip()
+                    if not token:
+                        print(f"Skipped optional source (missing {header_env} secret): {source['id']}")
+                        totals["skipped"] += 1
+                        continue
+                    headers[source.get("auth_header", "Authorization")] = token
+                query_env = source.get("auth_query_env")
+                if query_env:
+                    token = os.getenv(query_env, "").strip()
+                    if not token:
+                        print(f"Skipped optional source (missing {query_env} secret): {source['id']}")
+                        totals["skipped"] += 1
+                        continue
+                    parsed = urlsplit(request_url)
+                    params = dict(parse_qsl(parsed.query, keep_blank_values=True))
+                    params[source.get("auth_query_name", "key")] = token
+                    request_url = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(params), parsed.fragment))
                 if not robots_allowed(url):
                     print(f"Skipped disallowed source: {source['id']}")
                     totals["skipped"] += 1
                     continue
-                body, status = request(url)
+                body, status = request(request_url, headers=headers)
                 if not body or status != 200:
                     print(f"Source unavailable or over budget: {source['id']} ({status})")
                     totals["skipped"] += 1
