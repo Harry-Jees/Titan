@@ -6,8 +6,10 @@ pin/revalidate the resolved address at connection time to prevent DNS rebinding.
 from __future__ import annotations
 
 import ipaddress
+import os
 import socket
 from dataclasses import dataclass
+from typing import Mapping
 from urllib.parse import urljoin, urlsplit
 
 
@@ -22,6 +24,59 @@ class URLDecision:
     reason: str
     normalized_url: str = ""
     addresses: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class CrawlerConfig:
+    """Validated per-run budgets; invalid environment values fail closed."""
+    page_target: int = 10_000
+    fetch_timeout: int = 20
+    per_host_delay: float = 1.0
+    max_page_bytes: int = 4_000_000
+    allowed_domains: tuple[str, ...] = ()
+    denied_domains: tuple[str, ...] = ()
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] | None = None) -> "CrawlerConfig":
+        values = os.environ if env is None else env
+        try:
+            page_target = int(values.get("TITAN_PAGE_TARGET", "10000"))
+            fetch_timeout = int(values.get("TITAN_FETCH_TIMEOUT", "20"))
+            per_host_delay = float(values.get("TITAN_PER_HOST_DELAY", "1"))
+            max_page_bytes = int(values.get("TITAN_MAX_PAGE_BYTES", "4000000"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Crawler budget settings must be valid numbers.") from exc
+        if not 1 <= page_target <= 10_000:
+            raise ValueError("TITAN_PAGE_TARGET must be between 1 and 10000.")
+        if not 1 <= fetch_timeout <= 30:
+            raise ValueError("TITAN_FETCH_TIMEOUT must be between 1 and 30.")
+        if not 1.0 <= per_host_delay <= 60.0:
+            raise ValueError("TITAN_PER_HOST_DELAY must be between 1 and 60.")
+        if not 100_000 <= max_page_bytes <= 4_000_000:
+            raise ValueError("TITAN_MAX_PAGE_BYTES must be between 100000 and 4000000.")
+
+        def domains(key: str) -> tuple[str, ...]:
+            raw = values.get(key, "")
+            result = []
+            for item in raw.split(","):
+                host = item.strip().lower().rstrip(".")
+                if not host:
+                    continue
+                if "/" in host or ":" in host or " " in host:
+                    raise ValueError(f"{key} must contain hostnames only.")
+                result.append(host)
+            return tuple(dict.fromkeys(result))
+
+        return cls(page_target, fetch_timeout, per_host_delay, max_page_bytes,
+                   domains("TITAN_ALLOWED_DOMAINS"),
+                   domains("TITAN_DENIED_DOMAINS"))
+
+    def host_allowed(self, host: str) -> bool:
+        candidate = host.lower().rstrip(".")
+        matches = lambda domain: candidate == domain or candidate.endswith("." + domain)
+        if any(matches(domain) for domain in self.denied_domains):
+            return False
+        return not self.allowed_domains or any(matches(domain) for domain in self.allowed_domains)
 
 
 def resolve_public_url(value: str, resolver=socket.getaddrinfo) -> URLDecision:
