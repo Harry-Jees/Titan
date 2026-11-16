@@ -103,6 +103,13 @@ class PinnedTransportTests(unittest.TestCase):
             adapter.get_connection("https://docs.example.org/", proxies={"https": "http://proxy.invalid"})
         adapter.close()
 
+    def test_tls_verification_cannot_be_disabled(self):
+        adapter = PinnedHTTPAdapter(resolver=self.resolver("93.184.216.34"))
+        request = requests.Request("GET", "https://docs.example.org/").prepare()
+        with self.assertRaises(requests.exceptions.SSLError):
+            adapter.send(request, verify=False)
+        adapter.close()
+
 
 if __name__ == "__main__":
     unittest.main()
