@@ -35,11 +35,11 @@ export default {
 
       if (request.method === "GET" && url.pathname === "/health")
         return json({ ok: true, service: "titan-ai-core", version: "0.3.0",
-          features: ["persistent-memory","conversation-history","gpt-oss-20b-reasoning","semantic-rag","twice-daily-autonomous-research"],
+          features: ["persistent-memory","conversation-history","gpt-oss-20b-reasoning","semantic-rag","pinned-python-crawler"],
           modelMode: "workers-ai-gpt-oss-20b",
           hostedInference: true,
           cloudflareAiBinding: true,
-          message: "Titan uses GPT-OSS-20B with source-attributed semantic knowledge retrieval. Research is scheduled by native Worker Cron Triggers." });
+          message: "Titan uses GPT-OSS-20B with source-attributed semantic knowledge retrieval. Worker-side autonomous fetching is disabled until a DNS-pinned HTTPS egress service is configured." });
 
       if (request.method === "POST" && url.pathname === "/training/rag-export") {
         if (!isAdmin(request, env)) return json({ error: "Unauthorized" }, 401);
@@ -215,9 +215,9 @@ export default {
       }
       if (request.method === "POST" && url.pathname === "/research/run") {
         if (!isAdmin(request, env)) return json({ error: "Unauthorized" }, 401);
-        const scheduledAt = Date.now(), runId = "manual-" + scheduledAt;
-        await env.RESEARCH_WORKFLOW.create({ id: runId, params: { runId, scheduledAt, durationSeconds: 1800 } });
-        return json({ started: true, runId, durationSeconds: 1800 }, 202);
+        return json({
+          error: "Worker research fetching is temporarily disabled. Use the Python crawler with its pinned HTTP transport until the dedicated secure egress service is available."
+        }, 503);
       }
 
       if (request.method === "POST" && url.pathname === "/chat") {
