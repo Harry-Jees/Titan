@@ -51,17 +51,12 @@ export function extractResearchPage(html:string,url:string):Omit<ResearchPage,"c
  return {url:normalizeResearchUrl(url),canonicalUrl,title,text,links};
 }
 async function sha256(value:string):Promise<string>{const hash=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value));return [...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,"0")).join("");}
-async function robotsBody(env:Env,origin:string):Promise<string>{
- const cached=await env.DB.prepare("SELECT body FROM research_robots WHERE origin=? AND expires_at>CURRENT_TIMESTAMP").bind(origin).first<{body:string}>();if(cached)return cached.body;
- let body="User-agent: *\nDisallow: /";try{const r=await fetch(origin+"/robots.txt",{headers:{"user-agent":USER_AGENT},redirect:"manual",signal:AbortSignal.timeout(8000)});if(r.status===404)body="User-agent: *\nAllow: /";else if(r.status===200)body=(await r.text()).slice(0,100000);}catch{/* fail closed */}
- await env.DB.prepare("INSERT INTO research_robots(origin,body,expires_at) VALUES(?,?,datetime('now','+1 day')) ON CONFLICT(origin) DO UPDATE SET body=excluded.body,expires_at=excluded.expires_at").bind(origin,body).run();return body;
-}
-export async function fetchResearchPage(env:Env,inputUrl:string):Promise<ResearchPage|null>{
- const url=normalizeResearchUrl(inputUrl);if(!url||!isSafePublicUrl(url))return null;const parsed=new URL(url),policy=await robotsBody(env,parsed.origin);if(!robotsAllows(policy,parsed.pathname))return null;
- let response:Response;try{response=await fetch(url,{headers:{"user-agent":USER_AGENT,"accept":"text/html,application/xhtml+xml"},redirect:"manual",signal:AbortSignal.timeout(12000)});}catch{return null;}
- if(response.status!==200||response.headers.get("content-type")?.toLowerCase().includes("html")!==true){response.body?.cancel();return null;}
- if(Number(response.headers.get("content-length")||"0")>MAX_BYTES){response.body?.cancel();return null;}if(!response.body)return null;
- const reader=response.body.getReader(),chunks:Uint8Array[]=[];let total=0;while(true){const part=await reader.read();if(part.done)break;total+=part.value.length;if(total>MAX_BYTES){await reader.cancel();return null;}chunks.push(part.value);}
- const bytes=new Uint8Array(total);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
- const extracted=extractResearchPage(new TextDecoder().decode(bytes),response.url||url);if(!extracted)return null;return {...extracted,contentHash:await sha256(extracted.text)};
+/**
+ * Cloudflare Workers' fetch() API cannot currently pin an arbitrary HTTPS
+ * request to a validated DNS answer while preserving the origin TLS identity.
+ * Do not re-enable this path until a separately operated, audited egress
+ * service provides that guarantee. The Python crawler uses training.pinned_http.
+ */
+export async function fetchResearchPage(_env:Env,_inputUrl:string):Promise<ResearchPage|null>{
+ throw new Error("Worker research fetching is disabled until a DNS-pinned HTTPS egress service is configured.");
 }
