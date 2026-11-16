@@ -11,6 +11,7 @@ from typing import Iterable
 from urllib.parse import urldefrag, urljoin, urlparse, parse_qsl, urlencode
 import requests
 from bs4 import BeautifulSoup
+from training.crawler_policy import CrawlerConfig
 from training.pinned_http import UnsafeCrawlerURL, mount_pinned_transport, safe_get
 
 LOG = logging.getLogger("titan.explorer")
@@ -68,7 +69,7 @@ class AutonomousExplorer:
         self.output_dir=Path(output_dir); self.duration_seconds=duration_seconds; self.max_pages=max_pages
         self.timeout_seconds=timeout_seconds; self.host_delay=max(.5,host_delay)
         self.session=requests.Session()
-        mount_pinned_transport(self.session)
+        mount_pinned_transport(self.session, config=CrawlerConfig.from_env())
         self.session.headers.update({"User-Agent":USER_AGENT,"Accept":"text/html,application/xhtml+xml;q=0.9"})
         self.robots={}; self.last_host_request={}; self.visited=set(); self.queued=set(); self.frontier=deque(); self.records=[]
         self.started=0.0; self.stop_reason="time_limit"
