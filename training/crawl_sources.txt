@@ -1,28 +1,72 @@
-# Public sources: respect robots rules, terms, privacy, copyright and licenses.
+# Broad, public educational and reference sources. The crawler still obeys robots.txt,
+# per-host pacing, source terms, copyright, privacy and the configured run budget.
+
+# AI, machine learning, software and computing
 https://arxiv.org/
-https://www.nature.com/
-https://www.science.org/
+https://aclanthology.org/
 https://docs.python.org/3/
 https://developer.mozilla.org/
-https://kubernetes.io/docs/
 https://docs.github.com/
 https://developers.cloudflare.com/
 https://huggingface.co/docs
 https://pytorch.org/docs/stable/
-https://scikit-learn.org/stable/
 https://www.tensorflow.org/learn
+https://jax.readthedocs.io/
+https://scikit-learn.org/stable/
+https://kubernetes.io/docs/
 https://www.rfc-editor.org/
 https://www.w3.org/TR/
+https://doc.rust-lang.org/
+https://go.dev/doc/
+
+# Mathematics, physics and engineering
+https://mathworld.wolfram.com/
 https://www.nist.gov/
-https://www.noaa.gov/
+https://www.energy.gov/science
+https://home.cern/
+https://www.esa.int/
 https://www.nasa.gov/
-https://www.who.int/
-https://www.worldbank.org/
-https://www.imf.org/
-https://ourworldindata.org/
-https://www.britannica.com/
-https://plato.stanford.edu/
 https://ocw.mit.edu/
 https://www.open.edu/openlearn/
+
+# Biology, medicine and public health (educational/reference material)
+https://www.who.int/
+https://www.cdc.gov/
+https://www.nih.gov/
+https://medlineplus.gov/
+https://www.nature.com/
+https://www.science.org/
+
+# Economics, finance, development and public data
+https://www.worldbank.org/
+https://www.imf.org/
+https://www.oecd.org/
+https://ourworldindata.org/
+https://fred.stlouisfed.org/
+https://www.rbi.org.in/
+https://www.mospi.gov.in/
+https://data.gov.in/
+
+# Climate, environment and earth sciences
+https://www.noaa.gov/
+https://climate.nasa.gov/
+https://www.unep.org/
+https://www.epa.gov/
+https://www.ipcc.ch/
+
+# History, philosophy, culture and society
+https://plato.stanford.edu/
+https://www.britannica.com/
+https://www.loc.gov/
+https://www.si.edu/
+https://www.unesco.org/
+
+# Law, governance, standards and civic knowledge
+https://www.indiacode.nic.in/
+https://www.legislation.gov.uk/
+https://www.congress.gov/
+https://eur-lex.europa.eu/
+
+# News and current affairs: crawl only where robots and publisher terms allow
 https://www.reuters.com/
 https://apnews.com/
