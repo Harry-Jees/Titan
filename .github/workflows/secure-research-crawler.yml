@@ -32,6 +32,8 @@ jobs:
       TITAN_API_BASE: ${{ vars.TITAN_API_BASE || 'https://titan-ai-core.harryjees.workers.dev' }}
       TITAN_ADMIN_TOKEN: ${{ secrets.TITAN_ADMIN_TOKEN }}
       TITAN_INGEST_CHUNK_LIMIT: "1000"
+      OTX_API_KEY: ${{ secrets.OTX_API_KEY }}
+      SHODAN_API_KEY: ${{ secrets.SHODAN_API_KEY }}
     steps:
       - name: Check out Titan
         uses: actions/checkout@v4
