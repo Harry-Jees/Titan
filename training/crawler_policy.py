@@ -94,7 +94,8 @@ def resolve_public_url(value: str, resolver=socket.getaddrinfo) -> URLDecision:
         return URLDecision(False, "unsupported_scheme")
     if not host or parsed.username is not None or parsed.password is not None:
         return URLDecision(False, "missing_host_or_credentials")
-    if port is not None and port not in {80, 443}:
+    expected_port = 443 if scheme == "https" else 80
+    if port is not None and port != expected_port:
         return URLDecision(False, "port_not_allowed")
     if host == "localhost" or host.endswith(_PRIVATE_SUFFIXES):
         return URLDecision(False, "local_hostname")
