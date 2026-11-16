@@ -4,9 +4,9 @@
 
 Titan's public-web crawler runs from a GitHub Actions runner, not from the Cloudflare Worker. The runner uses the existing shared Python transport (training.pinned_http) which resolves each hostname, rejects non-global DNS answers, pins the validated address to the TCP socket, preserves TLS hostname verification, and revalidates every redirect. Worker-side arbitrary outbound fetching remains disabled.
 
-- **Daily schedule:** 06:30 UTC / 12:00 PM India Standard Time.
+- **Daily schedule:** 16:30 UTC / 10:00 PM IST and 18:30 UTC / 12:00 AM IST.
 - **On demand:** run Actions → Titan Secure Research Crawler → Run workflow.
-- **Default budget:** 180 new pages and up to 300 knowledge chunks per run.
+- **Default budget:** 600 new pages and up to 1,000 knowledge chunks per run, plus bounded registered OSINT feeds.
 - **Persistence:** GitHub Actions cache retains the crawler's URL/hash checkpoint and public crawl corpus between runs.
 - **Indexing:** new text is split into bounded chunks and sent in batches of at most 25 to the authenticated Titan POST /knowledge endpoint. Titan's existing BGE-M3 + lexical RAG path makes indexed material retrievable during normal chat.
 - **No model training required:** new knowledge is indexed as evidence-backed retrieval context. It does not alter model weights.

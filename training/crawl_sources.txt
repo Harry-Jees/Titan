@@ -70,3 +70,39 @@ https://eur-lex.europa.eu/
 # News and current affairs: crawl only where robots and publisher terms allow
 https://www.reuters.com/
 https://apnews.com/
+
+# OSINT and cyber intelligence reference sources
+https://attack.mitre.org/
+https://www.cisa.gov/
+https://nvd.nist.gov/
+https://www.first.org/
+https://www.shadowserver.org/
+https://www.spamhaus.org/
+https://www.abuse.ch/
+https://urlhaus.abuse.ch/
+https://otx.alienvault.com/
+https://www.shodan.io/
+https://search.censys.io/
+https://urlscan.io/
+https://www.greynoise.io/
+https://www.virustotal.com/
+https://www.malwarebytes.com/blog
+https://www.recordedfuture.com/blog
+https://www.sans.org/blog/
+
+# Geospatial and open mapping intelligence
+https://www.openstreetmap.org/
+https://wiki.openstreetmap.org/
+https://www.naturalearthdata.com/
+https://www.geonames.org/
+https://www.usgs.gov/
+https://earthobservatory.nasa.gov/
+
+# Public corporate, financial and government records
+https://www.sec.gov/edgar/
+https://www.gov.uk/government/organisations/companies-house
+https://opencorporates.com/
+https://www.data.gov/
+https://data.europa.eu/
+https://www.indiacode.nic.in/
+https://www.mca.gov.in/
