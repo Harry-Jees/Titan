@@ -3,11 +3,14 @@ import { reserveAiNeurons } from "./ai-budget";
 export type Completion = { text: string; model: string };
 export type CompletionOptions = { bucket?: string; bucketLimit?: number; maxOutputTokens?: number; jsonMode?: boolean };
 
-function extractText(result: any): string {
-  const content = result?.choices?.[0]?.message?.content ?? result?.response ?? result?.output_text;
-  if (typeof content === "string") return content.trim();
-  if (Array.isArray(content)) return content.map((part:any)=>typeof part==="string"?part:String(part?.text||"")).join("").trim();
-  return "";
+function extractText(value: any): string {
+  if (typeof value === "string") return value.trim();
+  if (Array.isArray(value)) return value.map(extractText).filter(Boolean).join("\n").trim();
+  if (!value || typeof value !== "object") return "";
+  if (typeof value.text === "string") return value.text.trim();
+  if (typeof value.content === "string") return value.content.trim();
+  const nested = value.content ?? value.output ?? value.response ?? value.choices?.[0]?.message?.content;
+  return nested === value ? "" : extractText(nested);
 }
 
 /** Titan's reasoning engine: OpenAI's open-weight GPT-OSS-20B through its Workers AI binding. */
