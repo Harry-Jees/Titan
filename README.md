@@ -1,6 +1,6 @@
 # Titan — personal autonomous AI agent
 
-Titan is a separate, cloud-first personal agent. This repository contains a portable Cloudflare Workers foundation for chat, persistent memory, API tools, opt-in conversation curation, source-attributed knowledge, autonomous research, evaluation and bounded self-building.
+Titan is a separate, cloud-first personal agent. This repository contains a portable Cloudflare Workers foundation for chat, persistent memory, API tools, opt-in conversation curation, source-attributed knowledge, safe Python-based research, evaluation and bounded self-building.
 
 **Deployment boundary:** the public preview runs as a separate Worker at [titan-ai-core.harryjees.workers.dev](https://titan-ai-core.harryjees.workers.dev/). It does not replace the existing live `titan-agent-api` or `titan-training-pipeline`. It reuses the existing `titan-memory` D1 database and creates only additive public-session and knowledge tables; existing rows and secrets are not rewritten.
 
@@ -57,7 +57,7 @@ Keep secrets out of source control. The semantic-learning branch connects GPT-OS
 - DELETE /tools?name=...
 - GET /experiences/episodes/:id/replay — deterministic read-only projection; never executes actions
 - GET /experiences/episodes/:id/events?after=0&limit=200 — sequence-cursor event pages (limit 1–200; `nextAfter` is exclusive)
-- GET /research/status and POST /research/run — admin-only research status and one-off test run
+- GET /research/status — admin-only read-only research status. POST /research/run currently returns HTTP 503 while Worker-side outbound fetching is disabled.
 - GET /training/preferences, POST /training/preferences — explicit user opt-in/out
 - GET /training/examples, DELETE /training/examples?id=... — view or delete your own curation examples
 - GET /training/examples/export — export only your own approved examples as JSONL
