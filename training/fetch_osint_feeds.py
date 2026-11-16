@@ -101,8 +101,6 @@ def value_at(record, path: str):
             value = value.get(part)
         else:
             return None
-    if isinstance(value, (dict, list)):
-        return json.dumps(value, ensure_ascii=False)
     return value
 
 
