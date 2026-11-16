@@ -9,6 +9,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Iterator
+from urllib.parse import urlparse
 
 import requests
 
@@ -17,6 +18,8 @@ CYCLE = Path(os.getenv("TITAN_CYCLE_OUT", ROOT / "crawled_pages_cycle.jsonl"))
 API_BASE = os.getenv("TITAN_API_BASE", "").strip().rstrip("/")
 ADMIN_TOKEN = os.getenv("TITAN_ADMIN_TOKEN", "")
 CHUNK_LIMIT = int(os.getenv("TITAN_INGEST_CHUNK_LIMIT", "300"))
+if not 1 <= CHUNK_LIMIT <= 1000:
+    raise ValueError("TITAN_INGEST_CHUNK_LIMIT must be between 1 and 1000.")
 CHUNK_CHARS = 4200
 BATCH_SIZE = 25
 MAX_RETRIES = 4
@@ -82,13 +85,21 @@ def read_chunks(path: Path) -> list[dict[str, str]]:
 def post_batch(session: requests.Session, url: str, chunks: list[dict[str, str]]) -> dict:
     payload = {"chunks": chunks}
     for attempt in range(MAX_RETRIES):
-        response = session.post(url, json=payload, timeout=(10, 45))
+        try:
+            response = session.post(url, json=payload, timeout=(10, 45))
+        except requests.RequestException:
+            if attempt + 1 == MAX_RETRIES:
+                raise
+            time.sleep(min(30, 2 ** attempt))
+            continue
         if response.status_code == 429 or response.status_code >= 500:
-            delay = min(30, int(response.headers.get("Retry-After", 2 ** attempt)))
+            retry_after = response.headers.get("Retry-After", "")
+            delay = int(retry_after) if retry_after.isdigit() else 2 ** attempt
+            status = response.status_code
             response.close()
             if attempt + 1 == MAX_RETRIES:
-                raise RuntimeError(f"Titan ingestion failed after retries (HTTP {response.status_code}).")
-            time.sleep(max(1, delay))
+                raise RuntimeError(f"Titan ingestion failed after retries (HTTP {status}).")
+            time.sleep(max(1, min(30, delay)))
             continue
         if not response.ok:
             detail = response.text[:500]
@@ -101,8 +112,11 @@ def post_batch(session: requests.Session, url: str, chunks: list[dict[str, str]]
 
 
 def main() -> int:
-    if not API_BASE or not ADMIN_TOKEN:
-        raise SystemExit("TITAN_API_BASE and TITAN_ADMIN_TOKEN are required.")
+    parsed = urlparse(API_BASE)
+    if parsed.scheme != "https" or not parsed.hostname or parsed.path not in ("", "/"):
+        raise SystemExit("TITAN_API_BASE must be an HTTPS origin without a path.")
+    if not ADMIN_TOKEN:
+        raise SystemExit("TITAN_ADMIN_TOKEN is required.")
     if not CYCLE.exists():
         print("No crawler cycle file; nothing to index.")
         return 0
