@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from training.push_knowledge import post_batch, read_chunks, split_text
+from training.push_knowledge import MAX_BATCH_BYTES, build_batches, post_batch, read_chunks, split_text
 
 
 class KnowledgePushTests(unittest.TestCase):
@@ -27,6 +27,18 @@ class KnowledgePushTests(unittest.TestCase):
         self.assertEqual(len(chunks), 1)
         self.assertEqual(chunks[0]["source_url"], page["url"])
         self.assertLessEqual(len(chunks[0]["content"]), 5000)
+
+
+    def test_batches_stay_below_worker_json_body_limit(self):
+        chunks = [{"source_url": "https://docs.example.org/" + ("x" * 100),
+                   "title": "Reference title", "content": "knowledge " * 80}
+                  for _ in range(50)]
+        batches = build_batches(chunks)
+        self.assertGreater(len(batches), 1)
+        for batch in batches:
+            self.assertLessEqual(len(batch), 25)
+            encoded = json.dumps({"chunks": batch}, ensure_ascii=False).encode("utf-8")
+            self.assertLessEqual(len(encoded), MAX_BATCH_BYTES)
 
     def test_post_batch_retries_rate_limit_then_succeeds(self):
         session = Mock()
