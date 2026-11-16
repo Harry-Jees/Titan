@@ -103,12 +103,3 @@ class CrawlerPolicyTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     CrawlerConfig.from_env(values)
 
-
-if __name__ == "__main__":
-    unittest.main()
-
-
-    def test_rejects_scheme_mismatched_standard_ports(self):
-        for candidate in ("https://example.org:80/", "http://example.org:443/"):
-            with self.subTest(candidate=candidate):
-                self.assertEqual(resolve_public_url(candidate).reason, "port_not_allowed")
