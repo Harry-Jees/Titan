@@ -98,10 +98,17 @@ class CrawlerPolicyTests(unittest.TestCase):
             {"TITAN_PER_HOST_DELAY": "0"},
             {"TITAN_MAX_PAGE_BYTES": "99999999"},
             {"TITAN_ALLOWED_DOMAINS": "https://example.org/path"},
+            {"TITAN_ALLOWED_DOMAINS": "*.example.org"},
         ):
             with self.subTest(values=values):
                 with self.assertRaises(ValueError):
                     CrawlerConfig.from_env(values)
+
+
+    def test_rejects_scheme_mismatched_standard_ports(self):
+        for candidate in ("https://example.org:80/", "http://example.org:443/"):
+            with self.subTest(candidate=candidate):
+                self.assertEqual(resolve_public_url(candidate).reason, "port_not_allowed")
 
 
 if __name__ == "__main__":

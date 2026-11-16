@@ -1,11 +1,12 @@
 # Titan crawler threat model and configuration contract
 
-Status: Day 2 security contract. This document defines the policy every
-crawler entry point must share. It does not claim that the current scheduled
-Worker or Python crawler already enforces every control. The standalone
-`training.crawler_policy` module supplies a testable URL/DNS/redirect policy;
-Day 3 wires the policy into active network transports and closes connection-
-time DNS rebinding gaps.
+Status: Day 3 Python crawler transport implementation. The shared
+`training.crawler_policy` module validates URLs, DNS answers, redirects and
+bounded configuration. `training.pinned_http` applies the policy at the
+connection boundary; both `training/crawl_web.py` and `titan_explorer`
+mount this adapter for their HTTP and HTTPS requests. The separate scheduled
+Cloudflare Worker research fetcher is not automatically covered by this
+Python transport and must retain its own outbound URL controls.
 
 ## 1. Assets and trust boundaries
 
@@ -35,13 +36,17 @@ A candidate URL is accepted only when all checks pass:
 5. Every redirect is a new untrusted URL: resolve relative locations, reject
    HTTPS-to-HTTP downgrade, and rerun the full URL and DNS policy before
    following it. Never rely on the original URL's DNS decision.
-6. Connection-time address pinning/revalidation is required to defeat DNS
-   rebinding. A preflight DNS lookup alone is not sufficient; the HTTP
-   transport must connect only to a validated address while preserving TLS
-   hostname verification and HTTP Host semantics.
+6. The Python transport resolves each hostname immediately before pool
+   selection and pins the selected globally routable address to the socket.
+   TLS SNI/certificate validation and the HTTP Host header continue to use
+   the original hostname. A new request repeats resolution; a changed DNS
+   answer selects a new pinned pool.
 
 The policy rejects private, loopback, link-local, multicast, reserved and
-otherwise non-global destinations. It must not follow redirects automatically.
+otherwise non-global destinations. Redirects are followed manually, with
+relative URL resolution and full DNS policy checks at every hop. The current
+Python policy intentionally rejects cross-host redirects and HTTPS downgrade.
+The adapter disables ambient proxies and refuses TLS verification opt-out.
 
 ## 3. Robots, pacing and content limits
 
@@ -101,12 +106,16 @@ exhaustion states.
 | Prompt injection in page text | Remains untrusted retrieval content |
 | Invalid/oversized configuration | Fail startup; no unbounded fallback |
 
-## 6. Day 2 implementation boundary
+## 6. Day 3 implementation boundary
 
-The pure policy helper and deterministic tests cover URL syntax, DNS answer
-classification, fail-closed resolution, redirect destination policy and
-validated page/domain budgets. They are not a substitute for connection-time
-pinning. Day 3 must integrate this contract into `training/crawl_web.py`
-and `titan_explorer`, including safe redirect handling, DNS rebinding
-resistance, robots transport, and bounded request behavior. No live Worker
-deployment or D1 mutation is part of this milestone.
+The Python crawler entry points now use the shared policy and pinned transport.
+The deterministic transport tests verify that the socket destination is the
+validated IP while the original hostname remains the TLS/HTTP identity; they
+also cover private/mixed DNS rejection, domain allow/deny, proxy rejection and
+redirect downgrade/cross-host rejection. Robots fetches use the same bounded
+transport and fail closed on timeout, oversized content and non-404 errors.
+
+This does not claim that the scheduled Cloudflare Worker has been changed by
+the Python adapter. Its outbound fetch path requires a separate Worker-side
+audit and policy integration before making the same security claim. No live
+Worker deployment or D1 mutation is part of this milestone.

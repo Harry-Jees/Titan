@@ -11,6 +11,8 @@ from typing import Iterable
 from urllib.parse import urldefrag, urljoin, urlparse, parse_qsl, urlencode
 import requests
 from bs4 import BeautifulSoup
+from training.crawler_policy import CrawlerConfig
+from training.pinned_http import UnsafeCrawlerURL, mount_pinned_transport, safe_get
 
 LOG = logging.getLogger("titan.explorer")
 USER_AGENT = "TitanResearchBot/0.1 (+https://github.com/Harry-Jees/Titan; public research crawler)"
@@ -65,8 +67,11 @@ class AutonomousExplorer:
         if not 1<=duration_seconds<=MAX_SESSION_SECONDS: raise ValueError("duration_seconds must be between 1 and 1800")
         if not 1<=max_pages<=MAX_PAGES_HARD: raise ValueError(f"max_pages must be between 1 and {MAX_PAGES_HARD}")
         self.output_dir=Path(output_dir); self.duration_seconds=duration_seconds; self.max_pages=max_pages
-        self.timeout_seconds=timeout_seconds; self.host_delay=max(.5,host_delay)
-        self.session=requests.Session(); self.session.trust_env=False
+        self.timeout_seconds=timeout_seconds
+        self.config=CrawlerConfig.from_env()
+        self.host_delay=max(self.config.per_host_delay,host_delay)
+        self.session=requests.Session()
+        mount_pinned_transport(self.session, config=self.config)
         self.session.headers.update({"User-Agent":USER_AGENT,"Accept":"text/html,application/xhtml+xml;q=0.9"})
         self.robots={}; self.last_host_request={}; self.visited=set(); self.queued=set(); self.frontier=deque(); self.records=[]
         self.started=0.0; self.stop_reason="time_limit"
@@ -77,13 +82,26 @@ class AutonomousExplorer:
     def _robots_allowed(self,url):
         p=urlparse(url); origin=f"{p.scheme}://{p.netloc}"
         if origin not in self.robots:
+            self._pace(p.hostname or "")
             parser=urllib.robotparser.RobotFileParser(); parser.set_url(origin+"/robots.txt")
+            response=None
             try:
-                r=self.session.get(parser.url,timeout=min(8,self.timeout_seconds),allow_redirects=False)
-                if r.status_code>=400: parser.parse([])
-                elif len(r.content)<=256000: parser.parse(r.text.splitlines())
-                else: return False
-            except requests.RequestException: return False
+                response=safe_get(self.session,parser.url,timeout=min(8,self.timeout_seconds),
+                                  stream=True,max_redirects=5,same_host_redirects=True)
+                if response.status_code==404:
+                    parser.parse([])
+                elif response.status_code==200:
+                    body=bytearray()
+                    for chunk in response.iter_content(8192):
+                        body.extend(chunk)
+                        if len(body)>256000: return False
+                    parser.parse(bytes(body).decode("utf-8","replace").splitlines())
+                else:
+                    return False
+            except (requests.RequestException,UnsafeCrawlerURL,ValueError):
+                return False
+            finally:
+                if response is not None: response.close()
             self.robots[origin]=parser
         return self.robots[origin].can_fetch(USER_AGENT,url)
     def _pace(self,host):
@@ -92,7 +110,8 @@ class AutonomousExplorer:
         self.last_host_request[host]=time.monotonic()
     def _discover_seed(self):
         try:
-            r=self.session.get("https://en.wikipedia.org/w/api.php",params={"action":"query","list":"random","rnnamespace":0,"rnlimit":1,"format":"json"},timeout=min(10,self.timeout_seconds)); r.raise_for_status()
+            self._pace("en.wikipedia.org")
+            r=safe_get(self.session,"https://en.wikipedia.org/w/api.php",params={"action":"query","list":"random","rnnamespace":0,"rnlimit":1,"format":"json"},timeout=min(10,self.timeout_seconds),max_redirects=5,same_host_redirects=True); r.raise_for_status()
             title=r.json()["query"]["random"][0]["title"]
             return _clean_url("https://en.wikipedia.org/wiki/"+requests.utils.quote(title.replace(" ","_"),safe="()_,"))
         except (requests.RequestException,ValueError,KeyError,IndexError) as e:
@@ -103,9 +122,8 @@ class AutonomousExplorer:
         if not self._robots_allowed(url): LOG.info("Robots disallows or unavailable: %s",url); return None,[]
         self._pace(p.hostname or ""); response=None
         try:
-            response=self.session.get(url,timeout=min(self.timeout_seconds,max(2,self._remaining())),allow_redirects=False,stream=True)
-            if response.status_code in {301,302,303,307,308}:
-                target=_clean_url(response.headers.get("Location",""),url); return None,[target] if target else []
+            response=safe_get(self.session,url,timeout=min(self.timeout_seconds,max(2,self._remaining())),
+                              max_redirects=5,same_host_redirects=True,stream=True)
             if response.status_code!=200 or not any(t in response.headers.get("Content-Type","").lower() for t in ("text/html","application/xhtml+xml")): return None,[]
             length=response.headers.get("Content-Length")
             if length and int(length)>MAX_PAGE_BYTES: return None,[]
@@ -119,7 +137,7 @@ class AutonomousExplorer:
             for node in soup(["script","style","noscript","svg","canvas","form","iframe","nav","footer"]): node.decompose()
             title=(soup.title.get_text(" ",strip=True) if soup.title else "")[:300]
             main=soup.find("main") or soup.find("article") or soup.body or soup
-            text=unescape(re.sub(r"\s+"," ",main.get_text(" ",strip=True)))[:MAX_TEXT_CHARS]
+            text=unescape(re.sub(r"\\s+"," ",main.get_text(" ",strip=True)))[:MAX_TEXT_CHARS]
             if len(text)<120: return None,[]
             links=[]
             for a in soup.find_all("a",href=True):
@@ -127,7 +145,8 @@ class AutonomousExplorer:
                 if target and target not in self.visited: links.append(target)
             record=PageRecord(response.url,title or url,datetime.now(timezone.utc).isoformat(),200,text,_summarize(text),_extract_keywords(text),len(links),sha256(text.encode()).hexdigest())
             return record,links
-        except (requests.RequestException,ValueError,OSError) as e: LOG.debug("Fetch failed %s: %s",url,e); return None,[]
+        except (requests.RequestException,UnsafeCrawlerURL,ValueError,OSError) as e:
+            LOG.debug("Fetch failed %s: %s",url,e); return None,[]
         finally:
             if response is not None: response.close()
     def run(self,seeds: Iterable[str]=()):

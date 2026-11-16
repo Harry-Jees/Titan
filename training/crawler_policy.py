@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import re
 import socket
 from dataclasses import dataclass
 from typing import Mapping
@@ -62,8 +63,13 @@ class CrawlerConfig:
                 host = item.strip().lower().rstrip(".")
                 if not host:
                     continue
-                if "/" in host or ":" in host or " " in host:
-                    raise ValueError(f"{key} must contain hostnames only.")
+                labels = host.split(".")
+                if (len(host) > 253 or any(
+                    not label or len(label) > 63
+                    or re.fullmatch(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", label) is None
+                    for label in labels
+                )):
+                    raise ValueError(f"{key} must contain valid DNS hostnames only.")
                 result.append(host)
             return tuple(dict.fromkeys(result))
 
@@ -94,7 +100,8 @@ def resolve_public_url(value: str, resolver=socket.getaddrinfo) -> URLDecision:
         return URLDecision(False, "unsupported_scheme")
     if not host or parsed.username is not None or parsed.password is not None:
         return URLDecision(False, "missing_host_or_credentials")
-    if port is not None and port not in {80, 443}:
+    expected_port = 443 if scheme == "https" else 80
+    if port is not None and port != expected_port:
         return URLDecision(False, "port_not_allowed")
     if host == "localhost" or host.endswith(_PRIVATE_SUFFIXES):
         return URLDecision(False, "local_hostname")

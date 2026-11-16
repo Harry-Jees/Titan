@@ -75,7 +75,7 @@ Registered tools can be selected by the model and run with strict parameter allo
 - **09:00 AM IST (03:30 UTC):** separate D1 curation worker. It processes only conversations from users who explicitly enable `training_preferences`, screens sensitive data, grades at most eight pairs and stores candidates. It does not update model weights.
 - **No training dependency:** the research → extraction → indexing → retrieval loop is the complete learning path. LoRA candidate training is an optional, separately invoked local experiment; Titan remains fully usable when no training machine exists.
 
-Crawling must respect source terms, robots rules, copyright, privacy and applicable law. The shared crawler threat model, URL/DNS rules and per-run configuration contract are in [`docs/CRAWLER-THREAT-MODEL.md`](docs/CRAWLER-THREAT-MODEL.md). The policy helper is a preflight guard; connection-time DNS pinning is still required before active crawler transports rely on it.
+Crawling must respect source terms, robots rules, copyright, privacy and applicable law. The shared crawler threat model, URL/DNS rules and per-run configuration contract are in [`docs/CRAWLER-THREAT-MODEL.md`](docs/CRAWLER-THREAT-MODEL.md). Both Python crawler entry points use a shared pinned HTTP transport: each request resolves the hostname, rejects any non-global answer, and connects to the selected validated IP while retaining the original Host header and TLS hostname verification. Redirects are manually revalidated, HTTPS downgrade and cross-host redirects are rejected by default, ambient proxies are disabled, and TLS verification cannot be switched off.
 
 ## RAG scale and performance
 
