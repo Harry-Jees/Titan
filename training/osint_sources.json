@@ -1,0 +1,174 @@
+{
+  "version": 1,
+  "description": "Curated public OSINT feeds and datasets. Each connector is fetched only from its declared HTTPS endpoint; optional credentials are read from Actions secrets.",
+  "sources": [
+    {
+      "id": "cisa-kev",
+      "name": "CISA Known Exploited Vulnerabilities",
+      "category": "cyber-threat",
+      "kind": "json",
+      "url": "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
+      "records_path": "vulnerabilities",
+      "title_path": "vulnerabilityName",
+      "summary_paths": ["cveID", "vendorProject", "product", "shortDescription", "dateAdded", "dueDate", "knownRansomwareCampaignUse"],
+      "url_path": "cveID",
+      "date_path": "dateAdded"
+    },
+    {
+      "id": "nvd-cve",
+      "name": "NIST National Vulnerability Database",
+      "category": "cyber-vulnerabilities",
+      "kind": "json",
+      "url": "https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=100&startIndex=0",
+      "records_path": "vulnerabilities",
+      "title_path": "cve.id",
+      "summary_paths": ["cve.id", "cve.sourceIdentifier", "cve.published", "cve.lastModified", "cve.descriptions.0.value", "cve.metrics.cvssMetricV31.0.cvssData.baseScore"],
+      "url_path": "cve.id",
+      "date_path": "cve.lastModified"
+    },
+    {
+      "id": "github-security-advisories",
+      "name": "GitHub Global Security Advisories",
+      "category": "software-supply-chain",
+      "kind": "json",
+      "url": "https://api.github.com/advisories?per_page=100",
+      "records_path": "",
+      "title_path": "summary",
+      "summary_paths": ["ghsa_id", "cve_id", "severity", "published_at", "updated_at", "description", "vulnerabilities.0.package.name", "vulnerabilities.0.first_patched_version.identifier"],
+      "url_path": "html_url",
+      "date_path": "updated_at"
+    },
+    {
+      "id": "mitre-attack-enterprise",
+      "name": "MITRE ATT&CK Enterprise knowledge base",
+      "category": "adversary-techniques",
+      "kind": "json",
+      "url": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack.json",
+      "records_path": "objects",
+      "title_path": "name",
+      "summary_paths": ["type", "name", "description", "modified", "created", "external_references.0.url"],
+      "url_path": "external_references.0.url",
+      "date_path": "modified"
+    },
+    {
+      "id": "mitre-attack-mobile",
+      "name": "MITRE ATT&CK Mobile knowledge base",
+      "category": "mobile-threat-intelligence",
+      "kind": "json",
+      "url": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/mobile-attack/mobile-attack.json",
+      "records_path": "objects",
+      "title_path": "name",
+      "summary_paths": ["type", "name", "description", "modified", "external_references.0.url"],
+      "url_path": "external_references.0.url",
+      "date_path": "modified"
+    },
+    {
+      "id": "mitre-attack-ics",
+      "name": "MITRE ATT&CK ICS knowledge base",
+      "category": "industrial-control-threat-intelligence",
+      "kind": "json",
+      "url": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/ics-attack/ics-attack.json",
+      "records_path": "objects",
+      "title_path": "name",
+      "summary_paths": ["type", "name", "description", "modified", "external_references.0.url"],
+      "url_path": "external_references.0.url",
+      "date_path": "modified"
+    },
+    {
+      "id": "cisa-advisories",
+      "name": "CISA Cybersecurity Advisories",
+      "category": "cyber-advisories",
+      "kind": "xml",
+      "url": "https://www.cisa.gov/news-events/cybersecurity-advisories.xml"
+    },
+    {
+      "id": "cisa-alerts",
+      "name": "CISA Alerts",
+      "category": "cyber-alerts",
+      "kind": "xml",
+      "url": "https://www.cisa.gov/news-events/alerts.xml"
+    },
+    {
+      "id": "cert-eu",
+      "name": "CERT-EU Security Advisories",
+      "category": "cyber-advisories",
+      "kind": "xml",
+      "url": "https://cert.europa.eu/publications/security-advisories/rss"
+    },
+    {
+      "id": "cert-cc",
+      "name": "CERT Coordination Center Vulnerability Notes",
+      "category": "vulnerability-research",
+      "kind": "xml",
+      "url": "https://www.kb.cert.org/vuls/feeds/rss/"
+    },
+    {
+      "id": "google-project-zero",
+      "name": "Google Project Zero Research",
+      "category": "security-research",
+      "kind": "xml",
+      "url": "https://googleprojectzero.blogspot.com/feeds/posts/default?alt=rss"
+    },
+    {
+      "id": "bleepingcomputer",
+      "name": "BleepingComputer Security News",
+      "category": "cyber-news",
+      "kind": "xml",
+      "url": "https://www.bleepingcomputer.com/feed/"
+    },
+    {
+      "id": "the-hacker-news",
+      "name": "The Hacker News",
+      "category": "cyber-news",
+      "kind": "xml",
+      "url": "https://feeds.feedburner.com/TheHackersNews"
+    },
+    {
+      "id": "krebs-security",
+      "name": "Krebs on Security",
+      "category": "cyber-investigations",
+      "kind": "xml",
+      "url": "https://krebsonsecurity.com/feed/"
+    },
+    {
+      "id": "schneier-security",
+      "name": "Schneier on Security",
+      "category": "security-analysis",
+      "kind": "xml",
+      "url": "https://www.schneier.com/feed/atom/"
+    },
+    {
+      "id": "gdelt",
+      "name": "GDELT Global Events and News",
+      "category": "global-events",
+      "kind": "json",
+      "url": "https://api.gdeltproject.org/api/v2/doc/doc?query=cybersecurity%20OR%20artificial%20intelligence%20OR%20technology&mode=ArtList&format=json&maxrecords=250",
+      "records_path": "articles",
+      "title_path": "title",
+      "summary_paths": ["title", "seendate", "domain", "language", "sourcecountry"],
+      "url_path": "url",
+      "date_path": "seendate"
+    },
+    {
+      "id": "arxiv-cs",
+      "name": "arXiv Computer Science Research",
+      "category": "research-intelligence",
+      "kind": "xml",
+      "url": "https://export.arxiv.org/rss/cs"
+    },
+    {
+      "id": "openphish-community",
+      "name": "OpenPhish Community Feed",
+      "category": "phishing-intelligence",
+      "kind": "text",
+      "url": "https://raw.githubusercontent.com/openphish/public_feed/main/feed.txt"
+    },
+    {
+      "id": "urlhaus-recent",
+      "name": "abuse.ch URLhaus Recent URLs",
+      "category": "malicious-url-intelligence",
+      "kind": "text",
+      "url": "https://urlhaus.abuse.ch/downloads/text_recent/"
+    }
+  ]
+}
