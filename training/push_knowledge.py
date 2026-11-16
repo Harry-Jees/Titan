@@ -20,8 +20,9 @@ ADMIN_TOKEN = os.getenv("TITAN_ADMIN_TOKEN", "")
 CHUNK_LIMIT = int(os.getenv("TITAN_INGEST_CHUNK_LIMIT", "300"))
 if not 1 <= CHUNK_LIMIT <= 1000:
     raise ValueError("TITAN_INGEST_CHUNK_LIMIT must be between 1 and 1000.")
-CHUNK_CHARS = 4200
+CHUNK_CHARS = 800
 BATCH_SIZE = 25
+MAX_BATCH_BYTES = 17_000
 MAX_RETRIES = 4
 
 
@@ -82,6 +83,27 @@ def read_chunks(path: Path) -> list[dict[str, str]]:
     return output
 
 
+
+def build_batches(chunks: list[dict[str, str]]) -> list[list[dict[str, str]]]:
+    """Pack requests below the Worker JSON body limit with a safety margin."""
+    batches: list[list[dict[str, str]]] = []
+    current: list[dict[str, str]] = []
+    for chunk in chunks:
+        candidate = current + [chunk]
+        size = len(json.dumps({"chunks": candidate}, ensure_ascii=False).encode("utf-8"))
+        if current and (len(candidate) > BATCH_SIZE or size > MAX_BATCH_BYTES):
+            batches.append(current)
+            current = [chunk]
+        else:
+            current = candidate
+        single_size = len(json.dumps({"chunks": current}, ensure_ascii=False).encode("utf-8"))
+        if single_size > MAX_BATCH_BYTES:
+            raise ValueError("A single knowledge chunk exceeds the safe Worker request size.")
+    if current:
+        batches.append(current)
+    return batches
+
+
 def post_batch(session: requests.Session, url: str, chunks: list[dict[str, str]]) -> dict:
     payload = {"chunks": chunks}
     for attempt in range(MAX_RETRIES):
@@ -134,11 +156,12 @@ def main() -> int:
     })
     endpoint = f"{API_BASE}/knowledge"
     totals = {"accepted": 0, "valid": 0, "inserted": 0}
-    for offset in range(0, len(chunks), BATCH_SIZE):
-        result = post_batch(session, endpoint, chunks[offset:offset + BATCH_SIZE])
+    batches = build_batches(chunks)
+    for batch_number, batch in enumerate(batches, 1):
+        result = post_batch(session, endpoint, batch)
         for key in totals:
             totals[key] += int(result.get(key, 0))
-        print(f"Indexed batch {offset // BATCH_SIZE + 1}: {result}")
+        print(f"Indexed batch {batch_number}/{len(batches)}: {result}")
     session.close()
     print(json.dumps({"chunks_submitted": len(chunks), **totals}, sort_keys=True))
     if totals["valid"] != totals["accepted"]:
