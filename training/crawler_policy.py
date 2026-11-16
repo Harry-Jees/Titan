@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import re
 import socket
 from dataclasses import dataclass
 from typing import Mapping
@@ -62,8 +63,13 @@ class CrawlerConfig:
                 host = item.strip().lower().rstrip(".")
                 if not host:
                     continue
-                if "/" in host or ":" in host or " " in host:
-                    raise ValueError(f"{key} must contain hostnames only.")
+                labels = host.split(".")
+                if (len(host) > 253 or any(
+                    not label or len(label) > 63
+                    or re.fullmatch(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", label) is None
+                    for label in labels
+                )):
+                    raise ValueError(f"{key} must contain valid DNS hostnames only.")
                 result.append(host)
             return tuple(dict.fromkeys(result))
 
