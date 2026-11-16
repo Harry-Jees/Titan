@@ -32,7 +32,7 @@ The simulator is a fixed baseline, not a learned policy. Route-level disposable-
 - JSON request bodies capped at 20 KB; external tool responses streamed with a 30 KB cap; redirects rejected; tool execution is disabled until an exact trusted-host allowlist is configured.
 - Robots-aware crawler with same-host sitemap traversal, per-host pacing, bounded downloads and resumable state.
 - Source-attributed chunking, topic coverage planning and candidate LoRA training/evaluation scripts.
-- Twice-daily research is now implemented as native Cloudflare Cron Triggers at 00:30 and 12:30 UTC (06:00 and 18:00 IST), starting durable 30-minute Workflows. GPT-OSS semantically analyzes pages and stores evidence-backed facts and concepts; GitHub research schedules are removed.
+- Worker-side autonomous research schedules are intentionally disabled until secure arbitrary-host egress is available. The supported Python crawler uses DNS-pinned transport; the daily GitHub Actions ingestion pipeline and its authenticated RAG indexer are documented in docs/RESEARCH-PIPELINE.md.
 - Separate curation worker at 03:30 UTC (09:00 AM IST): only processes conversations from users who explicitly opt in, screens sensitive content, grades at most eight pairs and stores candidates. Users can inspect, approve, reject, export only approved rows, or delete their own examples. The worker never updates model weights.
 - Bounded self-build workflow is manual and PR-only; generated patches are restricted to source/tests/docs and now run TypeScript, Vitest and Python regression checks before a PR; no auto-merge or deployment.
 - CI covers Python regression tests, TypeScript strict checking and Vitest.
