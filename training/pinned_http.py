@@ -165,6 +165,8 @@ def safe_get(
     **kwargs,
 ):
     """Fetch with explicit, revalidated redirects; each hop is DNS-pinned."""
+    if "allow_redirects" in kwargs:
+        kwargs.pop("allow_redirects")
     adapter = session.get_adapter(url)
     if not isinstance(adapter, PinnedHTTPAdapter):
         raise UnsafeCrawlerURL("A PinnedHTTPAdapter is required for crawler requests.")
@@ -184,5 +186,6 @@ def safe_get(
         target_host = (urlsplit(decision.normalized_url).hostname or "").lower().rstrip(".")
         if same_host_redirects and target_host != original_host:
             raise UnsafeCrawlerURL("Cross-host crawler redirects are disabled.")
+        kwargs.pop("params", None)
         current = decision.normalized_url
     raise TooManyRedirects("Crawler redirect limit exceeded.")
