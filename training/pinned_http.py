@@ -18,7 +18,10 @@ from urllib3.connectionpool import HTTPConnectionPool, HTTPSConnectionPool
 from urllib3.exceptions import NewConnectionError
 from urllib3.util.connection import create_connection
 
-from .crawler_policy import resolve_public_url, validate_redirect
+try:
+    from .crawler_policy import resolve_public_url, validate_redirect
+except ImportError:  # Direct script execution from the training directory.
+    from crawler_policy import resolve_public_url, validate_redirect
 
 
 class UnsafeCrawlerURL(ValueError):
