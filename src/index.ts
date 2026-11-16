@@ -360,10 +360,4 @@ export default {
       return json({error:error instanceof Error?error.message:"Internal error"},500);
     }
   },
-  async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
-    const scheduledAt = controller.scheduledTime;
-    const runId = "cron-" + Math.floor(scheduledAt / 60000);
-    await env.RESEARCH_WORKFLOW.create({ id: runId, params: { runId, scheduledAt, durationSeconds: 1800 } });
-  }
 };
-export { TitanResearchWorkflow } from "./research-workflow";
