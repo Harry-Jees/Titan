@@ -67,9 +67,11 @@ class AutonomousExplorer:
         if not 1<=duration_seconds<=MAX_SESSION_SECONDS: raise ValueError("duration_seconds must be between 1 and 1800")
         if not 1<=max_pages<=MAX_PAGES_HARD: raise ValueError(f"max_pages must be between 1 and {MAX_PAGES_HARD}")
         self.output_dir=Path(output_dir); self.duration_seconds=duration_seconds; self.max_pages=max_pages
-        self.timeout_seconds=timeout_seconds; self.host_delay=max(.5,host_delay)
+        self.timeout_seconds=timeout_seconds
+        self.config=CrawlerConfig.from_env()
+        self.host_delay=max(self.config.per_host_delay,host_delay)
         self.session=requests.Session()
-        mount_pinned_transport(self.session, config=CrawlerConfig.from_env())
+        mount_pinned_transport(self.session, config=self.config)
         self.session.headers.update({"User-Agent":USER_AGENT,"Accept":"text/html,application/xhtml+xml;q=0.9"})
         self.robots={}; self.last_host_request={}; self.visited=set(); self.queued=set(); self.frontier=deque(); self.records=[]
         self.started=0.0; self.stop_reason="time_limit"
@@ -80,6 +82,7 @@ class AutonomousExplorer:
     def _robots_allowed(self,url):
         p=urlparse(url); origin=f"{p.scheme}://{p.netloc}"
         if origin not in self.robots:
+            self._pace(p.hostname or "")
             parser=urllib.robotparser.RobotFileParser(); parser.set_url(origin+"/robots.txt")
             response=None
             try:
@@ -107,6 +110,7 @@ class AutonomousExplorer:
         self.last_host_request[host]=time.monotonic()
     def _discover_seed(self):
         try:
+            self._pace("en.wikipedia.org")
             r=safe_get(self.session,"https://en.wikipedia.org/w/api.php",params={"action":"query","list":"random","rnnamespace":0,"rnlimit":1,"format":"json"},timeout=min(10,self.timeout_seconds),max_redirects=5,same_host_redirects=True); r.raise_for_status()
             title=r.json()["query"]["random"][0]["title"]
             return _clean_url("https://en.wikipedia.org/wiki/"+requests.utils.quote(title.replace(" ","_"),safe="()_,"))
