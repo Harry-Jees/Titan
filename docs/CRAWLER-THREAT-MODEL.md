@@ -68,10 +68,12 @@ silently converted to zero or unbounded values.
 
 | Setting | Default | Contract |
 | --- | --- | --- |
-| `TITAN_PAGE_TARGET` | 10,000 | Positive integer; hard-capped by deployment policy |
+| `TITAN_PAGE_TARGET` | 10,000 | Positive integer, maximum 10,000 |
 | `TITAN_FETCH_TIMEOUT` | 20 seconds | 1–30 seconds |
-| `TITAN_PER_HOST_DELAY` | 1 second | At least 1 second |
+| `TITAN_PER_HOST_DELAY` | 1 second | 1–60 seconds |
 | `TITAN_MAX_PAGE_BYTES` | 4,000,000 | 100,000–4,000,000 bytes |
+| `TITAN_ALLOWED_DOMAINS` | empty | Optional comma-separated hostname allowlist |
+| `TITAN_DENIED_DOMAINS` | empty | Comma-separated denylist; deny wins over allow |
 | `TITAN_CRAWLER_UA` | TitanKnowledgeBot | Descriptive, stable user agent |
 | `TITAN_CRAWLER_CONTACT` | unset | Optional public contact URL/email; never a secret |
 | `TITAN_CRAWL_SEEDS` | training/crawl_sources.txt | Operator-managed seed file |
@@ -79,9 +81,9 @@ silently converted to zero or unbounded values.
 | `TITAN_CRAWL_STATE` | training/crawl_state.json | Checkpoint state |
 
 Secrets, user API keys, cookies and authorization headers are never accepted
-as crawler configuration. Domain allow/deny policy must be explicit and
-deny rules take precedence. Production scheduling must expose pause/stop and
-budget exhaustion states.
+as crawler configuration. Domain matching includes the exact hostname and
+its subdomains. Production scheduling must expose pause/stop and budget
+exhaustion states.
 
 ## 5. Abuse cases and required tests
 
@@ -102,9 +104,9 @@ budget exhaustion states.
 ## 6. Day 2 implementation boundary
 
 The pure policy helper and deterministic tests cover URL syntax, DNS answer
-classification, fail-closed resolution and redirect destination policy.
-They are not a substitute for connection-time pinning. Day 3 must integrate
-this contract into `training/crawl_web.py` and `titan_explorer`, including
-safe redirect handling, DNS rebinding resistance, robots transport, and
-bounded request behavior. No live Worker deployment or D1 mutation is part
-of this milestone.
+classification, fail-closed resolution, redirect destination policy and
+validated page/domain budgets. They are not a substitute for connection-time
+pinning. Day 3 must integrate this contract into `training/crawl_web.py`
+and `titan_explorer`, including safe redirect handling, DNS rebinding
+resistance, robots transport, and bounded request behavior. No live Worker
+deployment or D1 mutation is part of this milestone.
