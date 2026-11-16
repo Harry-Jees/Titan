@@ -1,0 +1,86 @@
+import socket
+import unittest
+from unittest.mock import patch
+
+from training.crawler_policy import resolve_public_url, validate_redirect
+
+
+def answer(ip):
+    return (socket.AF_INET6 if ":" in ip else socket.AF_INET,
+            socket.SOCK_STREAM, 6, "", (ip, 0))
+
+
+class CrawlerPolicyTests(unittest.TestCase):
+    def resolver(self, *ips):
+        return lambda host, port, type: [answer(ip) for ip in ips]
+
+    def test_accepts_public_literal_and_public_dns(self):
+        self.assertTrue(resolve_public_url("https://1.1.1.1/").allowed)
+        decision = resolve_public_url("https://docs.example.org/path",
+                                      resolver=self.resolver("93.184.216.34"))
+        self.assertTrue(decision.allowed)
+        self.assertEqual(decision.addresses, ("93.184.216.34",))
+
+    def test_rejects_private_and_special_literals(self):
+        for ip in ("127.0.0.1", "10.0.0.2", "169.254.169.254",
+                   "192.168.1.1", "::1", "fc00::1", "fe80::1"):
+            with self.subTest(ip=ip):
+                self.assertFalse(resolve_public_url(f"http://{ip}/").allowed)
+
+    def test_rejects_credentials_ports_schemes_and_local_names(self):
+        candidates = (
+            "file:///etc/passwd", "ftp://example.org/", "https://u:p@example.org/",
+            "https://example.org:8443/", "http://localhost/",
+            "http://printer.local/", "http://service.internal/",
+        )
+        for candidate in candidates:
+            with self.subTest(candidate=candidate):
+                self.assertFalse(resolve_public_url(candidate).allowed)
+
+    def test_rejects_mixed_public_and_private_dns_answers(self):
+        decision = resolve_public_url("https://mixed.example.org/",
+                                      resolver=self.resolver("93.184.216.34", "10.0.0.8"))
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, "non_public_dns_answer")
+
+    def test_dns_failure_and_empty_answers_fail_closed(self):
+        def failed(*args, **kwargs):
+            raise socket.gaierror("no answer")
+        self.assertEqual(resolve_public_url("https://missing.example.org/",
+                                            resolver=failed).reason,
+                         "dns_resolution_failed")
+        self.assertEqual(resolve_public_url("https://empty.example.org/",
+                                            resolver=self.resolver()).reason,
+                         "dns_no_answers")
+
+    def test_rejects_oversized_and_malformed_urls(self):
+        self.assertEqual(resolve_public_url("https://a.example/" + "x" * 2100).reason,
+                         "invalid_or_oversized_url")
+        self.assertFalse(resolve_public_url("https://example.org:bad/").allowed)
+
+    def test_relative_redirect_is_resolved_and_revalidated(self):
+        decision = validate_redirect("https://docs.example.org/a",
+                                     "/b", resolver=self.resolver("93.184.216.34"))
+        self.assertTrue(decision.allowed)
+        self.assertEqual(decision.normalized_url, "https://docs.example.org/b")
+
+    def test_redirect_to_private_host_is_rejected(self):
+        decision = validate_redirect("https://public.example.org/",
+                                     "http://127.0.0.1/admin")
+        self.assertFalse(decision.allowed)
+
+    def test_cross_host_redirect_rechecks_dns(self):
+        decision = validate_redirect("https://public.example.org/",
+                                     "https://mixed.example.org/",
+                                     resolver=self.resolver("8.8.8.8", "192.168.1.10"))
+        self.assertFalse(decision.allowed)
+
+    def test_https_redirect_downgrade_is_rejected(self):
+        decision = validate_redirect("https://secure.example.org/",
+                                     "http://public.example.org/",
+                                     resolver=self.resolver("93.184.216.34"))
+        self.assertEqual(decision.reason, "https_downgrade")
+
+
+if __name__ == "__main__":
+    unittest.main()
