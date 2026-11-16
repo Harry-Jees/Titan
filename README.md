@@ -9,7 +9,7 @@ Titan is a separate, cloud-first personal agent. This repository contains a port
 - Cloudflare D1 for the current prototype's memory, conversations, knowledge, tool registry, approvals, audit and quotas
 - GPT-OSS-20B reasoning through Workers AI, protected by a conservative daily free-neuron reservation budget
 - BGE-M3 embeddings and hybrid D1 FTS5 + vector RAG
-- Robots-aware public research crawler and source-attributed chunking
+- Source-attributed knowledge ingestion and a Python crawler using DNS-pinned HTTP transport
 - **RAG is Titan's primary long-term learning system.** It stores versioned, evidence-backed knowledge outside model weights and retrieves only relevant context at answer time.
 - **LoRA training is optional experimentation only.** Titan does not require training, a local GPU, or model-weight updates to learn and use new information.
 - PR-only self-build workflow; no auto-merge. The separate public Worker auto-deploys only from `development/titan-foundation`.
@@ -32,7 +32,7 @@ Separate opt-in curation Worker: wrangler.training.toml, entry src/training-pipe
 
 `wrangler.toml` binds the existing `titan-memory` D1 database for the isolated public preview. `wrangler.training.toml` remains a separate configuration; use a development database ID for local/staging training tests.
 
-Required bindings: DB (D1), AI (Workers AI), and RESEARCH_WORKFLOW (Cloudflare Workflows).
+Required bindings: DB (D1) and AI (Workers AI). The Worker research Workflow binding and twice-daily cron are intentionally disabled until a separately operated, DNS-pinned HTTPS egress service is configured and verified.
 
 Optional secrets/vars:
 - TITAN_ADMIN_TOKEN
@@ -71,11 +71,11 @@ Conversation history is loaded server-side and scoped to the bearer namespace; c
 Registered tools can be selected by the model and run with strict parameter allowlists. Provisioning and execution fail closed unless the target hostname exactly matches TITAN_TOOL_HOST_ALLOWLIST; do not add user-controlled domains, redirectors or untrusted hosts. Server-managed tools may reference only dedicated TITAN_TOOL_SECRET_* bindings, never general model, auth or admin secrets. POST tools create a 10-minute, single-use approval bound to a fingerprint of the tool definition; changing the tool invalidates the pending approval. Tool calls are audited. External tool metadata and responses are treated as untrusted data.
 
 ## Research and learning schedules
-- **06:00 AM and 06:00 PM IST:** native Cloudflare Worker Cron Triggers start durable 30-minute research workflows. GPT-OSS converts pages into evidence-backed facts, concepts and concise knowledge units; BGE-M3 embeddings and FTS5 power hybrid RAG. GitHub Actions do not trigger research.
+- **Worker-side autonomous crawling is paused:** Cloudflare Workers `fetch()` cannot currently guarantee that an arbitrary HTTPS request connects to the exact DNS-validated IP while preserving the original TLS hostname. The unsafe Worker fetch path and its cron triggers have been disabled. `POST /research/run` returns HTTP 503 rather than attempting an unpinned request.
 - **09:00 AM IST (03:30 UTC):** separate D1 curation worker. It processes only conversations from users who explicitly enable `training_preferences`, screens sensitive data, grades at most eight pairs and stores candidates. It does not update model weights.
 - **No training dependency:** the research → extraction → indexing → retrieval loop is the complete learning path. LoRA candidate training is an optional, separately invoked local experiment; Titan remains fully usable when no training machine exists.
 
-Crawling must respect source terms, robots rules, copyright, privacy and applicable law. The shared crawler threat model, URL/DNS rules and per-run configuration contract are in [`docs/CRAWLER-THREAT-MODEL.md`](docs/CRAWLER-THREAT-MODEL.md). Both Python crawler entry points use a shared pinned HTTP transport: each request resolves the hostname, rejects any non-global answer, and connects to the selected validated IP while retaining the original Host header and TLS hostname verification. Redirects are manually revalidated, HTTPS downgrade and cross-host redirects are rejected by default, ambient proxies are disabled, and TLS verification cannot be switched off.
+Crawling must respect source terms, robots rules, copyright, privacy and applicable law. The shared crawler threat model, URL/DNS rules and per-run configuration contract are in [`docs/CRAWLER-THREAT-MODEL.md`](docs/CRAWLER-THREAT-MODEL.md). Both Python crawler entry points use a shared pinned HTTP transport: each request resolves the hostname, rejects any non-global answer, and connects to the selected validated IP while retaining the original Host header and TLS hostname verification. Redirects are manually revalidated, HTTPS downgrade and cross-host redirects are rejected by default, ambient proxies are disabled, and TLS verification cannot be switched off. The Cloudflare Worker does not perform outbound research fetches until an equivalent enforceable egress boundary is available.
 
 ## RAG scale and performance
 
