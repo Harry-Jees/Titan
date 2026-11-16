@@ -2,8 +2,9 @@ name: Titan Secure Research Crawler
 
 on:
   schedule:
-    # Daily at 12:00 IST (06:30 UTC).
-    - cron: "30 6 * * *"
+    # 10:00 PM IST (16:30 UTC) and 12:00 AM IST (18:30 UTC).
+    - cron: "30 16 * * *"
+    - cron: "30 18 * * *"
   workflow_dispatch:
     inputs:
       page_target:
