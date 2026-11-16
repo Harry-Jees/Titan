@@ -1,0 +1,88 @@
+name: Titan Secure Research Crawler
+
+on:
+  schedule:
+    # Daily at 12:00 IST (06:30 UTC).
+    - cron: "30 6 * * *"
+  workflow_dispatch:
+    inputs:
+      page_target:
+        description: "Maximum new pages to crawl in this run (1–10000)"
+        required: false
+        default: "180"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: titan-secure-research-crawler
+  cancel-in-progress: false
+
+jobs:
+  crawl-and-index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      TITAN_PAGE_TARGET: ${{ inputs.page_target || '180' }}
+      TITAN_FETCH_TIMEOUT: "20"
+      TITAN_PER_HOST_DELAY: "1"
+      TITAN_MAX_PAGE_BYTES: "4000000"
+      TITAN_API_BASE: ${{ vars.TITAN_API_BASE || 'https://titan-ai-core.harryjees.workers.dev' }}
+      TITAN_ADMIN_TOKEN: ${{ secrets.TITAN_ADMIN_TOKEN }}
+      TITAN_INGEST_CHUNK_LIMIT: "300"
+    steps:
+      - name: Check out Titan
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Restore crawler checkpoint and public corpus
+        uses: actions/cache@v4
+        with:
+          path: |
+            training/crawl_state.json
+            training/crawled_pages.jsonl
+          key: ${{ runner.os }}-titan-crawler-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-titan-crawler-
+
+      - name: Install crawler dependencies
+        run: python -m pip install --disable-pip-version-check "requests>=2.32,<3" "beautifulsoup4>=4.12,<5"
+
+      - name: Validate secure ingestion configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$TITAN_ADMIN_TOKEN" || { echo "::error::Add TITAN_ADMIN_TOKEN as a GitHub Actions repository secret. It must match the Titan Worker admin token."; exit 1; }
+          python - <<'PY'
+          import os
+          from urllib.parse import urlparse
+          from training.crawler_policy import CrawlerConfig
+          CrawlerConfig.from_env()
+          url = urlparse(os.environ["TITAN_API_BASE"])
+          if url.scheme != "https" or not url.hostname:
+              raise SystemExit("TITAN_API_BASE must be an HTTPS origin.")
+          print("Crawler budgets and HTTPS ingestion target validated.")
+          PY
+
+      - name: Crawl public sources using DNS-pinned transport
+        run: python training/crawl_web.py
+
+      - name: Index new evidence into Titan RAG
+        run: python training/push_knowledge.py
+
+      - name: Upload run report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: titan-research-report-${{ github.run_id }}
+          path: |
+            training/crawl_state.json
+            training/crawled_pages_cycle.jsonl
+          if-no-files-found: ignore
+          retention-days: 14
