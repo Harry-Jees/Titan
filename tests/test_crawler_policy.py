@@ -98,6 +98,7 @@ class CrawlerPolicyTests(unittest.TestCase):
             {"TITAN_PER_HOST_DELAY": "0"},
             {"TITAN_MAX_PAGE_BYTES": "99999999"},
             {"TITAN_ALLOWED_DOMAINS": "https://example.org/path"},
+            {"TITAN_ALLOWED_DOMAINS": "*.example.org"},
         ):
             with self.subTest(values=values):
                 with self.assertRaises(ValueError):
