@@ -1,7 +1,6 @@
 export interface Env {
  DB: D1Database;
  AI: Ai;
- RESEARCH_WORKFLOW: { create(options:{id:string;params:{runId:string;scheduledAt:number;durationSeconds:number}}): Promise<unknown> };
  TITAN_ADMIN_TOKEN?:string;
  TITAN_AUTH_MAP_B64?:string;
  TITAN_TOOL_REGISTRY?:string;
