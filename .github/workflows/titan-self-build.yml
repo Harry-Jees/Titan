@@ -1,0 +1,64 @@
+name: Titan Self-Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: One focused engineering task (maximum 2,000 characters)
+        required: true
+        type: string
+      max_iterations:
+        description: Maximum bounded repair attempts
+        required: false
+        default: "2"
+        type: choice
+        options: ["1", "2", "3"]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  propose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install and verify baseline
+        run: |
+          npm install
+          npm run typecheck
+          npm test
+          python -m pip install pytest
+          python -m pytest -q
+      - name: Generate bounded source patch
+        env:
+          TITAN_TASK: ${{ inputs.task }}
+          TITAN_MAX_ITERATIONS: ${{ inputs.max_iterations }}
+          TITAN_API_BASE: ${{ secrets.TITAN_API_BASE }}
+          TITAN_API_KEY: ${{ secrets.TITAN_API_KEY }}
+          TITAN_MODEL: ${{ secrets.TITAN_MODEL }}
+        run: python scripts/self_build.py
+      - name: Open review PR (never auto-merge)
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: titan/self-build-${{ github.run_id }}
+          delete-branch: true
+          title: "Titan self-build: ${{ inputs.task }}"
+          commit-message: "feat: propose bounded Titan self-build change"
+          body: |
+            Automated proposal from Titan's bounded self-build workflow.
+
+            - Patch scope is restricted to source, tests, README and docs.
+            - TypeScript and Vitest checks must pass before this PR is created.
+            - Human review is required. This workflow does not merge or deploy.
