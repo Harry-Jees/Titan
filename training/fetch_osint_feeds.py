@@ -183,7 +183,7 @@ def main() -> int:
                     seen.add((item.get("url"), item.get("title"), item.get("text", "")[:250]))
                 except json.JSONDecodeError:
                     continue
-    totals = {"sources": 0, "records": 0, "skipped": 0, "errors": 0}
+    totals = {"sources": 0, "records": 0, "skipped": 0, "blocked": 0, "errors": 0}
     with OUTPUT.open("a", encoding="utf-8") as output:
         for source in registry.get("sources", []):
             url = source.get("url", "")
@@ -256,11 +256,18 @@ def main() -> int:
                 output.flush()
                 totals["sources"] += 1
                 print(f"Collected {source['id']}: {source_count} new records")
-            except (requests.RequestException, UnsafeCrawlerURL, ET.ParseError, json.JSONDecodeError, OSError, ValueError, KeyError) as exc:
+            except UnsafeCrawlerURL:
+                # A rejected redirect or DNS answer is an expected policy block,
+                # not a reason to discard the successful records from other feeds.
+                totals["blocked"] += 1
+                print(f"Source blocked by crawler safety policy: {source.get('id', 'unknown')}", file=sys.stderr)
+            except (requests.RequestException, ET.ParseError, json.JSONDecodeError, OSError, ValueError, KeyError) as exc:
                 totals["errors"] += 1
                 print(f"Source failed {source.get('id', 'unknown')}: {type(exc).__name__}", file=sys.stderr)
     SESSION.close()
     print(json.dumps(totals, sort_keys=True))
+    # A transient source failure is visible to the workflow, but successful
+    # sources remain on disk for indexing. The workflow isolates this step.
     return 0 if totals["errors"] == 0 else 1
 
 

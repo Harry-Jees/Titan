@@ -55,4 +55,4 @@ Only run this experiment if you explicitly want to compare a separate adapter ag
 
 **Important model boundary:** the current training default is Qwen2.5-0.5B, while Titan's deployed reasoning model is GPT-OSS-20B. A Qwen adapter does not modify or attach to GPT-OSS. Cloudflare Workers AI LoRA inference supports compatible Llama, Gemma or Mistral adapter families; it does not train adapters. The local runner produces a separate experimental student adapter, not a smarter GPT-OSS model.
 
-The local runner is deliberately not started by Titan and is not required for autonomous research, memory, retrieval or chat. No GitHub Actions workflow is used for recurring research or local model training.
+The local runner is deliberately not started by Titan and is not required for autonomous research, memory, retrieval or chat. Scheduled public-web research is handled separately by `.github/workflows/secure-research-crawler.yml`; no GitHub Actions workflow starts local model training.
