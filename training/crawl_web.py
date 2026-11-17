@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Resumable, robots-aware sitemap crawler with per-host pacing and bounded downloads."""
 from __future__ import annotations
-import gzip, hashlib, ipaddress, io, json, os, re, sys, time
+import gzip, hashlib, ipaddress, io, json, os, re, sys, time, zlib
 from collections import deque
 from pathlib import Path
 from urllib.parse import urljoin, urlparse, urldefrag
@@ -53,7 +53,7 @@ def _read_sitemap_payload(body: bytes, sitemap_url: str) -> bytes:
         try:
             with gzip.GzipFile(fileobj=io.BytesIO(body)) as stream:
                 expanded = stream.read(MAX_SITEMAP_EXPANDED_BYTES + 1)
-        except (OSError, EOFError, ValueError) as exc:
+        except (OSError, EOFError, ValueError, zlib.error) as exc:
             raise SitemapLimitError("Invalid or unreadable compressed sitemap.") from exc
         if len(expanded) > MAX_SITEMAP_EXPANDED_BYTES:
             raise SitemapLimitError("Expanded sitemap exceeds the byte limit.")
