@@ -90,6 +90,17 @@ class CrawlerPolicyTests(unittest.TestCase):
         self.assertFalse(config.host_allowed("private.example.org"))
         self.assertFalse(config.host_allowed("elsewhere.net"))
 
+    def test_domain_policy_uses_label_boundaries_and_deny_precedence(self):
+        config = CrawlerConfig.from_env({
+            "TITAN_ALLOWED_DOMAINS": "example.org",
+            "TITAN_DENIED_DOMAINS": "private.example.org",
+        })
+        self.assertTrue(config.host_allowed("example.org"))
+        self.assertTrue(config.host_allowed("api.example.org"))
+        self.assertFalse(config.host_allowed("notexample.org"))
+        self.assertFalse(config.host_allowed("private.example.org"))
+        self.assertFalse(config.host_allowed("api.private.example.org"))
+
     def test_config_rejects_unbounded_or_invalid_values(self):
         for values in (
             {"TITAN_PAGE_TARGET": "0"},
