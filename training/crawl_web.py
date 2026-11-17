@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Resumable, robots-aware sitemap crawler with per-host pacing and bounded downloads."""
 from __future__ import annotations
-import gzip, hashlib, ipaddress, json, os, re, sys, time
+import gzip, hashlib, ipaddress, io, json, os, re, sys, time
 from collections import deque
 from pathlib import Path
 from urllib.parse import urljoin, urlparse, urldefrag
@@ -33,6 +33,78 @@ mount_pinned_transport(SESSION, config=CONFIG)
 SESSION.headers.update({"User-Agent":UA,"Accept":"text/html,application/xhtml+xml,application/xml,text/plain;q=0.8"})
 ROBOTS:dict[str,urllib.robotparser.RobotFileParser]={}
 LAST_HIT:dict[str,float]={}
+
+# Sitemap documents are untrusted input. Bound both compressed and expanded
+# data, parser work and discovered locations before adding URLs to the queue.
+MAX_SITEMAP_EXPANDED_BYTES = 8_000_000
+MAX_SITEMAP_COMPRESSION_RATIO = 20
+MAX_SITEMAP_ELEMENTS = 100_000
+MAX_SITEMAP_DEPTH = 32
+MAX_SITEMAP_LOCATIONS = 5_000
+
+
+class SitemapLimitError(ValueError):
+    """Raised when an untrusted sitemap exceeds a parser resource limit."""
+
+
+def _read_sitemap_payload(body: bytes, sitemap_url: str) -> bytes:
+    """Read plain or gzip sitemap bytes without allowing unbounded expansion."""
+    if sitemap_url.lower().split("?", 1)[0].endswith(".gz"):
+        try:
+            with gzip.GzipFile(fileobj=io.BytesIO(body)) as stream:
+                expanded = stream.read(MAX_SITEMAP_EXPANDED_BYTES + 1)
+        except (OSError, EOFError, ValueError) as exc:
+            raise SitemapLimitError("Invalid or unreadable compressed sitemap.") from exc
+        if len(expanded) > MAX_SITEMAP_EXPANDED_BYTES:
+            raise SitemapLimitError("Expanded sitemap exceeds the byte limit.")
+        if len(expanded) > max(1, len(body)) * MAX_SITEMAP_COMPRESSION_RATIO:
+            raise SitemapLimitError("Sitemap compression ratio exceeds the safety limit.")
+        return expanded
+
+    if len(body) > MAX_SITEMAP_EXPANDED_BYTES:
+        raise SitemapLimitError("Sitemap exceeds the byte limit.")
+    return body
+
+
+def _sitemap_locations(
+    body: bytes,
+    sitemap_url: str,
+    final_url: str,
+    budget: int,
+) -> tuple[list[str], list[str]]:
+    """Extract same-origin page and nested-sitemap URLs with bounded XML work."""
+    payload = _read_sitemap_payload(body, sitemap_url)
+    origin = urlparse(sitemap_url).netloc
+    pages: list[str] = []
+    nested: list[str] = []
+    depth = 0
+    elements = 0
+    location_limit = min(max(0, budget), MAX_SITEMAP_LOCATIONS)
+
+    for event, element in ET.iterparse(io.BytesIO(payload), events=("start", "end")):
+        if event == "start":
+            depth += 1
+            elements += 1
+            if depth > MAX_SITEMAP_DEPTH:
+                raise SitemapLimitError("Sitemap XML nesting exceeds the safety limit.")
+            if elements > MAX_SITEMAP_ELEMENTS:
+                raise SitemapLimitError("Sitemap XML element count exceeds the safety limit.")
+            continue
+
+        if element.tag.rsplit("}", 1)[-1].lower() == "loc" and element.text:
+            link = clean_url(urljoin(final_url or sitemap_url, element.text.strip()))
+            if link and urlparse(link).netloc == origin:
+                filename = urlparse(link).path.rsplit("/", 1)[-1].lower()
+                if filename.endswith(".xml") or "sitemap" in filename:
+                    nested.append(link)
+                else:
+                    pages.append(link)
+                if len(pages) + len(nested) >= location_limit:
+                    break
+        element.clear()
+        depth -= 1
+
+    return pages, nested
 
 def public_url(value:str)->bool:
     try:
@@ -116,19 +188,16 @@ def sitemap_urls(seed:str,budget:int)->list[str]:
         if sitemap in seen_maps or not public_url(sitemap) or urlparse(sitemap).netloc!=p.netloc or not allowed(sitemap): continue
         seen_maps.add(sitemap); body,final,status=request_once(sitemap)
         if not body or status!=200: continue
-        try: root=ET.fromstring(gzip.decompress(body) if sitemap.endswith(".gz") else body)
-        except Exception:
-            try: root=ET.fromstring(body)
-            except Exception: continue
-        for node in root.iter():
-            if node.tag.rsplit("}",1)[-1].lower()!="loc" or not node.text: continue
-            link=clean_url(urljoin(final or sitemap,node.text.strip()))
-            if not link or urlparse(link).netloc!=p.netloc: continue
-            if link.lower().endswith(".xml") or "sitemap" in link.lower().split("/")[-1]:
-                if link not in seen_maps: queue.append(link)
-            else:
-                found.append(link)
-                if len(found)>=budget: break
+        try:
+            pages, nested = _sitemap_locations(body, sitemap, final or sitemap, budget - len(found))
+        except (ET.ParseError, SitemapLimitError, OSError, EOFError):
+            continue
+        found.extend(pages[:max(0, budget - len(found))])
+        for link in nested:
+            if len(queue) >= MAX_SITEMAP_LOCATIONS:
+                break
+            if link not in seen_maps and link not in queue:
+                queue.append(link)
     return found
 
 def extract(url:str,html:bytes,final_url:str):
