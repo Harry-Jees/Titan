@@ -182,7 +182,7 @@ def sitemap_urls(seed:str,budget:int)->list[str]:
                 for line in body.decode("utf-8","ignore").splitlines():
                     if line.lower().startswith("sitemap:"):
                         link=clean_url(line.split(":",1)[1].strip())
-                        if link and urlparse(link).netloc==p.netloc: queue.append(link)
+                        if link and urlparse(link).netloc==p.netloc and len(queue)<MAX_SITEMAP_LOCATIONS: queue.append(link)
         else: queue.append(candidate)
     seen_maps=set(); found=[]
     while queue and len(found)<budget and len(seen_maps)<500:
