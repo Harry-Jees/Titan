@@ -48,6 +48,13 @@ class SitemapSafetyTests(unittest.TestCase):
         self.assertEqual(pages, [])
         self.assertEqual(nested, ["https://docs.example.org/nested.xml"])
 
+    def test_corrupt_gzip_sitemap_fails_as_a_policy_error(self):
+        with self.assertRaises(crawl_web.SitemapLimitError):
+            crawl_web._read_sitemap_payload(
+                b"not a gzip stream",
+                "https://docs.example.org/sitemap.xml.gz",
+            )
+
     def test_gzip_expansion_is_bounded(self):
         body = gzip.compress(b"x" * 129)
         with patch.object(crawl_web, "MAX_SITEMAP_EXPANDED_BYTES", 128):
