@@ -73,7 +73,9 @@ def _sitemap_locations(
     budget: int,
 ) -> tuple[list[str], list[str]]:
     """Extract same-origin page and nested-sitemap URLs with bounded XML work."""
-    payload = _read_sitemap_payload(body, sitemap_url)
+    if budget <= 0:
+        return [], []
+    payload = _read_sitemap_payload(body, final_url or sitemap_url)
     origin = urlparse(sitemap_url).netloc
     pages: list[str] = []
     nested: list[str] = []
