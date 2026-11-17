@@ -84,8 +84,30 @@ jobs:
         run: python training/crawl_web.py
 
       - name: Collect registered OSINT feeds using DNS-pinned transport
+        id: osint
         if: steps.config.outputs.ready == 'true'
+        continue-on-error: true
         run: python training/fetch_osint_feeds.py
+
+      - name: Summarize OSINT feed collection
+        if: always() && steps.config.outputs.ready == 'true'
+        env:
+          OSINT_OUTCOME: ${{ steps.osint.outcome }}
+        run: |
+          {
+            echo "## Optional OSINT feed collection"
+            case "$OSINT_OUTCOME" in
+              success)
+                echo "Feed collection completed. Any policy-blocked or unavailable sources are listed in the step log."
+                ;;
+              failure)
+                echo "Some registered feeds failed or were blocked. Their failures are isolated; the main crawl and successful feed records will still be sent to Titan RAG."
+                ;;
+              *)
+                echo "OSINT feed collection did not run, likely because the earlier crawl step failed."
+                ;;
+            esac
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Index new evidence into Titan RAG
         if: steps.config.outputs.ready == 'true'
