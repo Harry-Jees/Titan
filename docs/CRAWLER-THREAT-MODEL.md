@@ -53,18 +53,24 @@ The adapter disables ambient proxies and refuses TLS verification opt-out.
 
 - Fetch robots.txt for each origin and user agent; fail closed if unavailable
   or malformed. A confirmed 404 may be treated as no published rules.
-- Apply a minimum one-second delay per host by default; never parallelize
-  requests to the same host without a stricter explicit policy.
-- Use finite connect/read timeouts, bounded retries with exponential backoff
-  and jitter, and a global wall-clock deadline.
-- Accept HTML/XHTML for page extraction. Sitemap/XML is a separate parser
-  path with byte, decompression-ratio, element-count and nesting limits.
-- Stream response bodies and stop at the configured byte cap; never trust
-  Content-Length alone.
-- Bound pages per run, domains per run, total bytes, per-host requests,
-  queue size, extracted characters and wall-clock duration.
-- Store canonical URL, original URL, fetch time, status, content type, hash,
-  robots decision and crawl-policy version with every accepted document.
+- Apply a minimum one-second delay per host; requests to a host are sequential.
+- Apply the configured request timeout and stream each response up to the
+  per-response byte cap. Content-Length is an early rejection hint, not the
+  only size check.
+- Sitemap parsing has additional hard limits: 8 MB expanded bytes, a 20:1
+  gzip expansion ratio, 100,000 XML elements, nesting depth 32, 5,000
+  discovered locations per sitemap and at most 500 sitemap documents per seed.
+  Gzip data is read through a bounded stream before XML parsing.
+- HTML extraction is limited to the response byte cap and truncates stored
+  text to 250,000 characters.
+- The workflow currently caps new pages with TITAN_PAGE_TARGET and has a
+  55-minute job timeout. The crawler does not yet enforce independent
+  aggregate-byte, per-host-request, global-domain or total-run wall-clock
+  budgets; do not treat those as implemented guarantees. They remain explicit
+  follow-up work for the scheduler/operations milestones.
+- Store canonical URL, original URL, fetch time, content hash and source
+  provenance with every accepted document. Robots decisions are enforced
+  before page fetches but are not yet persisted as a per-document field.
 
 ## 4. Configuration contract
 
@@ -88,8 +94,19 @@ silently converted to zero or unbounded values.
 
 Secrets, user API keys, cookies and authorization headers are never accepted
 as crawler configuration. Domain matching includes the exact hostname and
-its subdomains. Production scheduling must expose pause/stop and budget
-exhaustion states.
+its subdomains; deny rules take precedence over allow rules.
+
+The sitemap parser also has fixed internal ceilings: expanded payload 8 MB,
+gzip expansion ratio 20:1, 100,000 XML elements, nesting depth 32, 5,000
+locations per sitemap and 500 sitemap documents per seed. These are code
+constants, not user-overridable environment settings.
+
+The current workflow sets a 600-page target per scheduled run and a 55-minute
+job timeout. The Python configuration permits up to 10,000 pages for an
+explicit manual run. Aggregate bytes, global domain count, per-host request
+count and an independent Python wall-clock deadline are not yet configurable
+or enforced; future milestones must add those controls before increasing
+crawl scale.
 
 ## 5. Abuse cases and required tests
 
@@ -103,7 +120,9 @@ exhaustion states.
 | HTTPS redirect to HTTP | Reject downgrade |
 | Credentials in URL or nonstandard port | Reject |
 | robots.txt timeout/5xx/oversized body | Fail closed |
-| Oversized/chunked response | Stop streaming at byte cap |
+| Oversized/chunked page response | Stop streaming at per-response byte cap |
+| Gzip sitemap expansion bomb or excessive ratio | Stop before XML parsing |
+| Excessive sitemap XML depth or element count | Reject the sitemap |
 | Prompt injection in page text | Remains untrusted retrieval content |
 | Invalid/oversized configuration | Fail startup; no unbounded fallback |
 
