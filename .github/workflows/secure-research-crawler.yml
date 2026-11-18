@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       page_target:
-        description: "Maximum new pages to crawl in this run (1–10000)"
+        description: "Maximum pages to fetch in this run (1–10000)"
         required: false
         default: "600"
         type: string
@@ -29,6 +29,11 @@ jobs:
       TITAN_FETCH_TIMEOUT: "20"
       TITAN_PER_HOST_DELAY: "1"
       TITAN_MAX_PAGE_BYTES: "4000000"
+      TITAN_MAX_TOTAL_BYTES: "100000000"
+      TITAN_MAX_RUN_SECONDS: "2400"
+      TITAN_MAX_HOSTS_PER_RUN: "50"
+      TITAN_RECRAWL_INTERVAL_SECONDS: "86400"
+      TITAN_MAX_QUEUE_SIZE: "20000"
       TITAN_API_BASE: ${{ vars.TITAN_API_BASE || 'https://titan-ai-core.harryjees.workers.dev' }}
       TITAN_ADMIN_TOKEN: ${{ secrets.TITAN_ADMIN_TOKEN }}
       TITAN_INGEST_CHUNK_LIMIT: "1000"
@@ -82,6 +87,30 @@ jobs:
       - name: Crawl public sources using DNS-pinned transport
         if: steps.config.outputs.ready == 'true'
         run: python training/crawl_web.py
+
+      - name: Summarize page crawl execution
+        if: success() && steps.config.outputs.ready == 'true'
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          state_path = Path("training/crawl_state.json")
+          print("## Public page crawl")
+          if not state_path.exists():
+              print("No crawl checkpoint was produced.")
+          else:
+              state = json.loads(state_path.read_text(encoding="utf-8"))
+              fetched = int(state.get("fetched_pages", 0))
+              target = int(state.get("target_pages", 0))
+              print(f"- Pages fetched: {fetched}/{target}")
+              print(f"- New/changed pages: {int(state.get('new_pages', 0))}")
+              print(f"- Remaining queue: {len(state.get('remaining_queue', []))}")
+              print(f"- Response bytes: {int(state.get('total_bytes', 0))}")
+              print(f"- Hostnames touched: {len(state.get('hosts_touched', []))}")
+              print(f"- Aggregate budget exhausted: {bool(state.get('budget_exhausted', False))}")
+              if not state.get("target_met", False):
+                  print("**Warning:** The configured page-fetch target was not met in this run.")
+          PY
 
       - name: Collect registered OSINT feeds using DNS-pinned transport
         id: osint
