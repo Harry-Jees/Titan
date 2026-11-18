@@ -86,6 +86,11 @@ class CrawlerPolicyTests(unittest.TestCase):
             "TITAN_DENIED_DOMAINS": "private.example.org",
         })
         self.assertEqual(config.page_target, 10_000)
+        self.assertEqual(config.max_total_bytes, 100_000_000)
+        self.assertEqual(config.max_run_seconds, 3_000)
+        self.assertEqual(config.max_hosts_per_run, 50)
+        self.assertEqual(config.recrawl_interval_seconds, 86_400)
+        self.assertEqual(config.max_queue_size, 20_000)
         self.assertTrue(config.host_allowed("api.example.org"))
         self.assertFalse(config.host_allowed("private.example.org"))
         self.assertFalse(config.host_allowed("elsewhere.net"))
@@ -108,6 +113,11 @@ class CrawlerPolicyTests(unittest.TestCase):
             {"TITAN_FETCH_TIMEOUT": "999"},
             {"TITAN_PER_HOST_DELAY": "0"},
             {"TITAN_MAX_PAGE_BYTES": "99999999"},
+            {"TITAN_MAX_TOTAL_BYTES": "0"},
+            {"TITAN_MAX_RUN_SECONDS": "30"},
+            {"TITAN_MAX_HOSTS_PER_RUN": "0"},
+            {"TITAN_RECRAWL_INTERVAL_SECONDS": "59"},
+            {"TITAN_MAX_QUEUE_SIZE": "99"},
             {"TITAN_ALLOWED_DOMAINS": "https://example.org/path"},
             {"TITAN_ALLOWED_DOMAINS": "*.example.org"},
         ):
