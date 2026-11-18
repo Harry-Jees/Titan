@@ -69,6 +69,9 @@ The adapter disables ambient proxies and refuses TLS verification opt-out.
   a bounded frontier queue. Robots, sitemap and page response bodies all count
   toward the aggregate byte budget. Per-host requests remain sequential and
   paced; there is no parallel crawler fan-out.
+- The aggregate byte counter includes the final in-flight response chunk that
+  crosses the cap; the stream is then closed immediately. The maximum read
+  chunk is 64 KiB, so accounting cannot silently omit bytes already received.
 - The checkpoint resumes pending URLs and refreshes previously fetched pages
   after a configurable age. fetched_pages measures successful page fetches;
   new_pages measures only content hashes not previously indexed. These are
