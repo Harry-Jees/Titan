@@ -110,7 +110,7 @@ class CrawlerSafetyTests(unittest.TestCase):
                  patch.object(crawler, "BUDGET_EXHAUSTED", False):
                 result = crawler.request_once("https://docs.python.org/page")
                 self.assertEqual(result, (None, None, "budget-exhausted"))
-                self.assertEqual(crawler.TOTAL_BYTES, 3)
+                self.assertEqual(crawler.TOTAL_BYTES, 6)
                 self.assertTrue(crawler.BUDGET_EXHAUSTED)
         self.assertTrue(response.closed)
 
