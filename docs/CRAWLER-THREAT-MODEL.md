@@ -63,11 +63,16 @@ The adapter disables ambient proxies and refuses TLS verification opt-out.
   Gzip data is read through a bounded stream before XML parsing.
 - HTML extraction is limited to the response byte cap and truncates stored
   text to 250,000 characters.
-- The workflow currently caps new pages with TITAN_PAGE_TARGET and has a
-  55-minute job timeout. The crawler does not yet enforce independent
-  aggregate-byte, per-host-request, global-domain or total-run wall-clock
-  budgets; do not treat those as implemented guarantees. They remain explicit
-  follow-up work for the scheduler/operations milestones.
+- The workflow caps successful page fetches with TITAN_PAGE_TARGET and has
+  a 55-minute job timeout. The Python crawler additionally enforces aggregate
+  response bytes, a process wall-clock deadline, a distinct-hostname cap and
+  a bounded frontier queue. Robots, sitemap and page response bodies all count
+  toward the aggregate byte budget. Per-host requests remain sequential and
+  paced; there is no parallel crawler fan-out.
+- The checkpoint resumes pending URLs and refreshes previously fetched pages
+  after a configurable age. fetched_pages measures successful page fetches;
+  new_pages measures only content hashes not previously indexed. These are
+  intentionally separate so an unchanged page still counts as researched.
 - Store canonical URL, original URL, fetch time, content hash and source
   provenance with every accepted document. Robots decisions are enforced
   before page fetches but are not yet persisted as a per-document field.
@@ -84,6 +89,11 @@ silently converted to zero or unbounded values.
 | `TITAN_FETCH_TIMEOUT` | 20 seconds | 1–30 seconds |
 | `TITAN_PER_HOST_DELAY` | 1 second | 1–60 seconds |
 | `TITAN_MAX_PAGE_BYTES` | 4,000,000 | 100,000–4,000,000 bytes |
+| TITAN_MAX_TOTAL_BYTES | 100,000,000 | 1 MB–1 GB response bytes per run |
+| TITAN_MAX_RUN_SECONDS | 3,000 seconds | 60–3,300 seconds |
+| TITAN_MAX_HOSTS_PER_RUN | 50 | 1–500 distinct hostnames |
+| TITAN_RECRAWL_INTERVAL_SECONDS | 86,400 seconds | 1 hour–30 days |
+| TITAN_MAX_QUEUE_SIZE | 20,000 | 100–50,000 queued URLs |
 | `TITAN_ALLOWED_DOMAINS` | empty | Optional comma-separated hostname allowlist |
 | `TITAN_DENIED_DOMAINS` | empty | Comma-separated denylist; deny wins over allow |
 | `TITAN_CRAWLER_UA` | TitanKnowledgeBot | Descriptive, stable user agent |
@@ -101,12 +111,13 @@ gzip expansion ratio 20:1, 100,000 XML elements, nesting depth 32, 5,000
 locations per sitemap and 500 sitemap documents per seed. These are code
 constants, not user-overridable environment settings.
 
-The current workflow sets a 600-page target per scheduled run and a 55-minute
-job timeout. The Python configuration permits up to 10,000 pages for an
-explicit manual run. Aggregate bytes, global domain count, per-host request
-count and an independent Python wall-clock deadline are not yet configurable
-or enforced; future milestones must add those controls before increasing
-crawl scale.
+The scheduled workflow sets a 600-successful-fetch target per run and a
+55-minute job timeout. It overrides the Python deadline to 40 minutes to leave
+time for OSINT collection and indexing. Defaults include a 100 MB aggregate
+response-byte budget, 50-hostname budget, 20,000-URL queue cap and one-day
+refresh interval. An explicit manual run may request up to 10,000 successful
+page fetches, but aggregate byte, time, host and queue budgets remain in force.
+The Actions summary reports fetched pages separately from new/changed pages.
 
 ## 5. Abuse cases and required tests
 
@@ -163,3 +174,21 @@ scheduled handler and cron triggers. It must not be re-enabled until a separate
 egoing service proves DNS-resolution-to-connection pinning and TLS identity
 verification on the production edge. No live Worker deployment or D1 mutation
 is part of this milestone.
+
+
+## 8. Resumable daily refresh and target semantics
+
+The checkpoint stores a bounded pending frontier and per-URL last successful
+fetch timestamps. Each run resumes pending URLs first, then adds newly
+discovered sitemap URLs, then refreshes stale known URLs in oldest-first order.
+Older checkpoints without timestamps are treated as stale once, allowing the
+crawler to recover its existing corpus without discarding it. The refresh
+interval prevents every scheduled run from repeatedly downloading the same
+pages after the backlog has been processed.
+
+The 600-page workflow target counts successful page fetches, including
+unchanged pages. The separate new/changed count controls what enters the
+current ingestion delta. A run that fetches zero pages must report that fact;
+OSINT feed records are not counted as web pages. A target warning is visible
+in the Actions summary when source availability, robots rules or a resource
+budget prevents the target from being reached.
