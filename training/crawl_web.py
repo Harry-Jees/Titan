@@ -229,7 +229,8 @@ def request_once(url:str):
             except ValueError:
                 response.close(); return None,None,"invalid-content-length"
         chunks=[]; total=0
-        for chunk in response.iter_content(65536):
+        read_size=min(65536,max(1,MAX_TOTAL_BYTES-TOTAL_BYTES))
+        for chunk in response.iter_content(read_size):
             if time.monotonic() - STARTED_AT >= MAX_RUN_SECONDS:
                 response.close()
                 BUDGET_EXHAUSTED=True
@@ -237,11 +238,11 @@ def request_once(url:str):
             total+=len(chunk)
             if total>MAX_BYTES:
                 response.close(); return None,None,"too-large"
-            if TOTAL_BYTES+len(chunk)>MAX_TOTAL_BYTES:
+            TOTAL_BYTES+=len(chunk)
+            if TOTAL_BYTES>MAX_TOTAL_BYTES:
                 response.close()
                 BUDGET_EXHAUSTED=True
                 return None,None,"budget-exhausted"
-            TOTAL_BYTES+=len(chunk)
             chunks.append(chunk)
         final=response.url
         response.close()
