@@ -13,7 +13,7 @@ class CrawlerSafetyTests(unittest.TestCase):
     def test_clean_url_removes_tracking_query_and_fragments(self):
         self.assertEqual(clean_url("https://example.org/docs/?utm_source=test#section"),"https://example.org/docs")
 
-if __name__ == "__main__": unittest.main()
+
 
 
     def test_frontier_resumes_pending_then_discovers_new_and_refreshes_stale(self):
@@ -127,3 +127,6 @@ if __name__ == "__main__": unittest.main()
                 result = crawler.request_once("https://docs.python.org/page")
             self.assertEqual(result, (None, None, "budget-exhausted"))
             safe_get.assert_not_called()
+
+
+if __name__ == "__main__": unittest.main()
