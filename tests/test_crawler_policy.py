@@ -54,6 +54,15 @@ class CrawlerPolicyTests(unittest.TestCase):
                                             resolver=self.resolver()).reason,
                          "dns_no_answers")
 
+    def test_rejects_raw_whitespace_backslashes_and_controls(self):
+        for candidate in ("https://example.org/path with spaces",
+                          "https://example.org/a\\\\b",
+                          "https://example.org/\\tbad",
+                          "https://example.org/\\x7f",
+                          "https://example.org/\\r\\nHost:evil"):
+            with self.subTest(candidate=candidate):
+                self.assertEqual(resolve_public_url(candidate).reason, "malformed_url")
+
     def test_rejects_oversized_and_malformed_urls(self):
         self.assertEqual(resolve_public_url("https://a.example/" + "x" * 2100).reason,
                          "invalid_or_oversized_url")
