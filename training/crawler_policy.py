@@ -36,6 +36,11 @@ class CrawlerConfig:
     max_page_bytes: int = 4_000_000
     allowed_domains: tuple[str, ...] = ()
     denied_domains: tuple[str, ...] = ()
+    max_total_bytes: int = 100_000_000
+    max_run_seconds: int = 3_000
+    max_hosts_per_run: int = 50
+    recrawl_interval_seconds: int = 86_400
+    max_queue_size: int = 20_000
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "CrawlerConfig":
@@ -45,6 +50,11 @@ class CrawlerConfig:
             fetch_timeout = int(values.get("TITAN_FETCH_TIMEOUT", "20"))
             per_host_delay = float(values.get("TITAN_PER_HOST_DELAY", "1"))
             max_page_bytes = int(values.get("TITAN_MAX_PAGE_BYTES", "4000000"))
+            max_total_bytes = int(values.get("TITAN_MAX_TOTAL_BYTES", "100000000"))
+            max_run_seconds = int(values.get("TITAN_MAX_RUN_SECONDS", "3000"))
+            max_hosts_per_run = int(values.get("TITAN_MAX_HOSTS_PER_RUN", "50"))
+            recrawl_interval_seconds = int(values.get("TITAN_RECRAWL_INTERVAL_SECONDS", "86400"))
+            max_queue_size = int(values.get("TITAN_MAX_QUEUE_SIZE", "20000"))
         except (TypeError, ValueError) as exc:
             raise ValueError("Crawler budget settings must be valid numbers.") from exc
         if not 1 <= page_target <= 10_000:
@@ -55,6 +65,16 @@ class CrawlerConfig:
             raise ValueError("TITAN_PER_HOST_DELAY must be between 1 and 60.")
         if not 100_000 <= max_page_bytes <= 4_000_000:
             raise ValueError("TITAN_MAX_PAGE_BYTES must be between 100000 and 4000000.")
+        if not 1_000_000 <= max_total_bytes <= 1_000_000_000:
+            raise ValueError("TITAN_MAX_TOTAL_BYTES must be between 1000000 and 1000000000.")
+        if not 60 <= max_run_seconds <= 3300:
+            raise ValueError("TITAN_MAX_RUN_SECONDS must be between 60 and 3300.")
+        if not 1 <= max_hosts_per_run <= 500:
+            raise ValueError("TITAN_MAX_HOSTS_PER_RUN must be between 1 and 500.")
+        if not 3600 <= recrawl_interval_seconds <= 2_592_000:
+            raise ValueError("TITAN_RECRAWL_INTERVAL_SECONDS must be between 3600 and 2592000.")
+        if not 100 <= max_queue_size <= 50_000:
+            raise ValueError("TITAN_MAX_QUEUE_SIZE must be between 100 and 50000.")
 
         def domains(key: str) -> tuple[str, ...]:
             raw = values.get(key, "")
@@ -73,9 +93,12 @@ class CrawlerConfig:
                 result.append(host)
             return tuple(dict.fromkeys(result))
 
-        return cls(page_target, fetch_timeout, per_host_delay, max_page_bytes,
-                   domains("TITAN_ALLOWED_DOMAINS"),
-                   domains("TITAN_DENIED_DOMAINS"))
+        return cls(
+            page_target, fetch_timeout, per_host_delay, max_page_bytes,
+            domains("TITAN_ALLOWED_DOMAINS"), domains("TITAN_DENIED_DOMAINS"),
+            max_total_bytes, max_run_seconds, max_hosts_per_run,
+            recrawl_interval_seconds, max_queue_size,
+        )
 
     def host_allowed(self, host: str) -> bool:
         candidate = host.lower().rstrip(".")

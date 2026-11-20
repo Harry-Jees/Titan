@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Resumable, robots-aware sitemap crawler with per-host pacing and bounded downloads."""
 from __future__ import annotations
-import gzip, hashlib, ipaddress, json, os, re, sys, time
+import gzip, hashlib, ipaddress, io, json, os, re, sys, time, zlib
 from collections import deque
 from pathlib import Path
 from urllib.parse import urljoin, urlparse, urldefrag
@@ -33,6 +33,89 @@ mount_pinned_transport(SESSION, config=CONFIG)
 SESSION.headers.update({"User-Agent":UA,"Accept":"text/html,application/xhtml+xml,application/xml,text/plain;q=0.8"})
 ROBOTS:dict[str,urllib.robotparser.RobotFileParser]={}
 LAST_HIT:dict[str,float]={}
+MAX_TOTAL_BYTES=CONFIG.max_total_bytes
+MAX_RUN_SECONDS=CONFIG.max_run_seconds
+MAX_HOSTS=CONFIG.max_hosts_per_run
+RECRAWL_INTERVAL=CONFIG.recrawl_interval_seconds
+MAX_QUEUE_SIZE=CONFIG.max_queue_size
+TOTAL_BYTES=0
+STARTED_AT=time.monotonic()
+REQUESTED_HOSTS:set[str]=set()
+BUDGET_EXHAUSTED=False
+
+# Sitemap documents are untrusted input. Bound both compressed and expanded
+# data, parser work and discovered locations before adding URLs to the queue.
+MAX_SITEMAP_EXPANDED_BYTES = 8_000_000
+MAX_SITEMAP_COMPRESSION_RATIO = 20
+MAX_SITEMAP_ELEMENTS = 100_000
+MAX_SITEMAP_DEPTH = 32
+MAX_SITEMAP_LOCATIONS = 5_000
+
+
+class SitemapLimitError(ValueError):
+    """Raised when an untrusted sitemap exceeds a parser resource limit."""
+
+
+def _read_sitemap_payload(body: bytes, sitemap_url: str) -> bytes:
+    """Read plain or gzip sitemap bytes without allowing unbounded expansion."""
+    if sitemap_url.lower().split("?", 1)[0].endswith(".gz"):
+        try:
+            with gzip.GzipFile(fileobj=io.BytesIO(body)) as stream:
+                expanded = stream.read(MAX_SITEMAP_EXPANDED_BYTES + 1)
+        except (OSError, EOFError, ValueError, zlib.error) as exc:
+            raise SitemapLimitError("Invalid or unreadable compressed sitemap.") from exc
+        if len(expanded) > MAX_SITEMAP_EXPANDED_BYTES:
+            raise SitemapLimitError("Expanded sitemap exceeds the byte limit.")
+        if len(expanded) > max(1, len(body)) * MAX_SITEMAP_COMPRESSION_RATIO:
+            raise SitemapLimitError("Sitemap compression ratio exceeds the safety limit.")
+        return expanded
+
+    if len(body) > MAX_SITEMAP_EXPANDED_BYTES:
+        raise SitemapLimitError("Sitemap exceeds the byte limit.")
+    return body
+
+
+def _sitemap_locations(
+    body: bytes,
+    sitemap_url: str,
+    final_url: str,
+    budget: int,
+) -> tuple[list[str], list[str]]:
+    """Extract same-origin page and nested-sitemap URLs with bounded XML work."""
+    if budget <= 0:
+        return [], []
+    payload = _read_sitemap_payload(body, final_url or sitemap_url)
+    origin = urlparse(sitemap_url).netloc
+    pages: list[str] = []
+    nested: list[str] = []
+    depth = 0
+    elements = 0
+    location_limit = min(max(0, budget), MAX_SITEMAP_LOCATIONS)
+
+    for event, element in ET.iterparse(io.BytesIO(payload), events=("start", "end")):
+        if event == "start":
+            depth += 1
+            elements += 1
+            if depth > MAX_SITEMAP_DEPTH:
+                raise SitemapLimitError("Sitemap XML nesting exceeds the safety limit.")
+            if elements > MAX_SITEMAP_ELEMENTS:
+                raise SitemapLimitError("Sitemap XML element count exceeds the safety limit.")
+            continue
+
+        if element.tag.rsplit("}", 1)[-1].lower() == "loc" and element.text:
+            link = clean_url(urljoin(final_url or sitemap_url, element.text.strip()))
+            if link and urlparse(link).netloc == origin:
+                filename = urlparse(link).path.rsplit("/", 1)[-1].lower()
+                if filename.endswith(".xml") or "sitemap" in filename:
+                    nested.append(link)
+                else:
+                    pages.append(link)
+                if len(pages) + len(nested) >= location_limit:
+                    break
+        element.clear()
+        depth -= 1
+
+    return pages, nested
 
 def public_url(value:str)->bool:
     try:
@@ -51,15 +134,86 @@ def clean_url(value:str)->str:
     p=urlparse(value)
     return p._replace(fragment="",query="").geturl().rstrip("/")
 
+
+def build_frontier(
+    discovered_urls,
+    state: dict,
+    *,
+    now: float | None = None,
+    refresh_interval_seconds: int | None = None,
+    max_queue_size: int | None = None,
+):
+    """Resume pending URLs, prioritize new discoveries, then refresh stale pages."""
+    current_time = time.time() if now is None else now
+    refresh_after = RECRAWL_INTERVAL if refresh_interval_seconds is None else refresh_interval_seconds
+    queue_limit = MAX_QUEUE_SIZE if max_queue_size is None else max_queue_size
+    seen = {clean_url(url) for url in state.get("seen_urls", []) if isinstance(url, str)}
+    last_crawled = state.get("last_crawled_at", {})
+    if not isinstance(last_crawled, dict):
+        last_crawled = {}
+
+    queue = deque()
+    queued: set[str] = set()
+
+    def add(value: str) -> None:
+        normalized = clean_url(value)
+        if normalized and normalized not in queued and len(queue) < queue_limit:
+            queue.append(normalized)
+            queued.add(normalized)
+
+    pending = state.get("remaining_queue", [])
+    if isinstance(pending, list):
+        for value in pending:
+            if isinstance(value, str):
+                add(value)
+
+    for value in discovered_urls:
+        normalized = clean_url(value) if isinstance(value, str) else ""
+        if normalized and normalized not in seen:
+            add(normalized)
+
+    stale = []
+    for url in seen:
+        if not url or url in queued:
+            continue
+        try:
+            last_seen = float(last_crawled.get(url, 0))
+        except (TypeError, ValueError):
+            last_seen = 0
+        if current_time - last_seen >= refresh_after:
+            stale.append((last_seen, url))
+    for _, url in sorted(stale):
+        add(url)
+
+    return queue
+
+
 def request_once(url:str):
+    global TOTAL_BYTES, BUDGET_EXHAUSTED
+
+    if BUDGET_EXHAUSTED or time.monotonic() - STARTED_AT >= MAX_RUN_SECONDS:
+        BUDGET_EXHAUSTED = True
+        return None, None, "budget-exhausted"
+    if TOTAL_BYTES >= MAX_TOTAL_BYTES:
+        BUDGET_EXHAUSTED = True
+        return None, None, "budget-exhausted"
+
     host=(urlparse(url).hostname or "").lower()
+    if host and host not in REQUESTED_HOSTS:
+        if len(REQUESTED_HOSTS) >= MAX_HOSTS:
+            BUDGET_EXHAUSTED = True
+            return None, None, "budget-exhausted"
+        REQUESTED_HOSTS.add(host)
+
     wait=PER_HOST_DELAY-(time.monotonic()-LAST_HIT.get(host,0))
-    if wait>0: time.sleep(wait)
+    if wait>0:
+        if time.monotonic() - STARTED_AT + wait >= MAX_RUN_SECONDS:
+            BUDGET_EXHAUSTED = True
+            return None, None, "budget-exhausted"
+        time.sleep(wait)
     LAST_HIT[host]=time.monotonic()
     response=None
     try:
-        # safe_get validates every redirect; the mounted adapter resolves and
-        # pins the exact public address used for each TCP connection.
         response=safe_get(SESSION,url,timeout=TIMEOUT,stream=True,
                           max_redirects=5,same_host_redirects=True)
         if response.status_code!=200:
@@ -75,10 +229,20 @@ def request_once(url:str):
             except ValueError:
                 response.close(); return None,None,"invalid-content-length"
         chunks=[]; total=0
-        for chunk in response.iter_content(65536):
+        read_size=min(65536,max(1,MAX_TOTAL_BYTES-TOTAL_BYTES))
+        for chunk in response.iter_content(read_size):
+            if time.monotonic() - STARTED_AT >= MAX_RUN_SECONDS:
+                response.close()
+                BUDGET_EXHAUSTED=True
+                return None,None,"budget-exhausted"
             total+=len(chunk)
             if total>MAX_BYTES:
                 response.close(); return None,None,"too-large"
+            TOTAL_BYTES+=len(chunk)
+            if TOTAL_BYTES>MAX_TOTAL_BYTES:
+                response.close()
+                BUDGET_EXHAUSTED=True
+                return None,None,"budget-exhausted"
             chunks.append(chunk)
         final=response.url
         response.close()
@@ -88,6 +252,7 @@ def request_once(url:str):
         return None,None,type(exc).__name__
 
 def allowed(url:str)->bool:
+    if BUDGET_EXHAUSTED: return False
     p=urlparse(url); origin=f"{p.scheme}://{p.netloc}"
     if origin not in ROBOTS:
         parser=urllib.robotparser.RobotFileParser(); robots_url=origin+"/robots.txt"; parser.set_url(robots_url)
@@ -108,27 +273,24 @@ def sitemap_urls(seed:str,budget:int)->list[str]:
                 for line in body.decode("utf-8","ignore").splitlines():
                     if line.lower().startswith("sitemap:"):
                         link=clean_url(line.split(":",1)[1].strip())
-                        if link and urlparse(link).netloc==p.netloc: queue.append(link)
+                        if link and urlparse(link).netloc==p.netloc and len(queue)<MAX_SITEMAP_LOCATIONS: queue.append(link)
         else: queue.append(candidate)
     seen_maps=set(); found=[]
-    while queue and len(found)<budget and len(seen_maps)<500:
+    while queue and len(found)<budget and len(seen_maps)<500 and not BUDGET_EXHAUSTED:
         sitemap=queue.popleft()
         if sitemap in seen_maps or not public_url(sitemap) or urlparse(sitemap).netloc!=p.netloc or not allowed(sitemap): continue
         seen_maps.add(sitemap); body,final,status=request_once(sitemap)
         if not body or status!=200: continue
-        try: root=ET.fromstring(gzip.decompress(body) if sitemap.endswith(".gz") else body)
-        except Exception:
-            try: root=ET.fromstring(body)
-            except Exception: continue
-        for node in root.iter():
-            if node.tag.rsplit("}",1)[-1].lower()!="loc" or not node.text: continue
-            link=clean_url(urljoin(final or sitemap,node.text.strip()))
-            if not link or urlparse(link).netloc!=p.netloc: continue
-            if link.lower().endswith(".xml") or "sitemap" in link.lower().split("/")[-1]:
-                if link not in seen_maps: queue.append(link)
-            else:
-                found.append(link)
-                if len(found)>=budget: break
+        try:
+            pages, nested = _sitemap_locations(body, sitemap, final or sitemap, budget - len(found))
+        except (ET.ParseError, SitemapLimitError, OSError, EOFError):
+            continue
+        found.extend(pages[:max(0, budget - len(found))])
+        for link in nested:
+            if len(queue) >= MAX_SITEMAP_LOCATIONS:
+                break
+            if link not in seen_maps and link not in queue:
+                queue.append(link)
     return found
 
 def extract(url:str,html:bytes,final_url:str):
@@ -147,40 +309,83 @@ def extract(url:str,html:bytes,final_url:str):
             "crawled_at":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),
             "license_note":"Check source terms before reuse for training."}
 
+
 def main():
     if not SEEDS.exists(): raise SystemExit(f"Seed list missing: {SEEDS}")
     seeds=[line.strip() for line in SEEDS.read_text(encoding="utf-8").splitlines() if line.strip() and not line.lstrip().startswith("#")]
-    state={"seen_urls":[],"seen_hashes":[]}
+    state={"seen_urls":[],"seen_hashes":[],"last_crawled_at":{},"remaining_queue":[]}
     if STATE.exists():
-        try: state.update(json.loads(STATE.read_text(encoding="utf-8")))
-        except Exception: pass
-    seen_urls=set(state.get("seen_urls",[])); seen_hashes=set(state.get("seen_hashes",[]))
-    queue=deque()
+        try:
+            loaded=json.loads(STATE.read_text(encoding="utf-8"))
+            if isinstance(loaded,dict): state.update(loaded)
+        except (OSError,ValueError):
+            print("Ignoring unreadable crawler checkpoint; starting with a bounded fresh frontier.",file=sys.stderr)
+
+    seen_urls=set(state.get("seen_urls",[]))
+    seen_hashes=set(state.get("seen_hashes",[]))
+    last_crawled_at=dict(state.get("last_crawled_at",{})) if isinstance(state.get("last_crawled_at",{}),dict) else {}
+    discovered=[]
     per_seed=max(100,min(5000,TARGET//max(1,len(seeds))*3))
     for seed in seeds:
+        if BUDGET_EXHAUSTED: break
         if not public_url(seed): continue
-        for link in sitemap_urls(seed,per_seed):
-            link=clean_url(link)
-            if link and link not in seen_urls: queue.append(link)
-    queue=deque(dict.fromkeys(queue))
+        discovered.extend(sitemap_urls(seed,per_seed))
+
+    queue=build_frontier(discovered,state,now=time.time())
     OUT.parent.mkdir(parents=True,exist_ok=True); CYCLE_OUT.parent.mkdir(parents=True,exist_ok=True)
+    fetched_count=0
     new_count=0
     with OUT.open("a",encoding="utf-8") as corpus,CYCLE_OUT.open("w",encoding="utf-8") as cycle:
-        while queue and new_count<TARGET:
+        while queue and fetched_count<TARGET and not BUDGET_EXHAUSTED:
             url=queue.popleft()
-            if url in seen_urls or not allowed(url): continue
-            body,final,status=request_once(url); seen_urls.add(url)
+            if not allowed(url): continue
+            body,final,status=request_once(url)
+            if status=="budget-exhausted": break
             if not body or status!=200 or not final: continue
-            item=extract(url,body,final)
-            if not item or item["content_sha256"] in seen_hashes: continue
-            seen_hashes.add(item["content_sha256"]); line=json.dumps(item,ensure_ascii=False)+"\n"
-            corpus.write(line); corpus.flush(); cycle.write(line); cycle.flush(); new_count+=1
-            if new_count%100==0: print(f"Processed {new_count}/{TARGET}; queue={len(queue)}")
-    STATE.write_text(json.dumps({"seen_urls":sorted(seen_urls),"seen_hashes":sorted(seen_hashes),
-        "last_run":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),"new_pages":new_count,
-        "target_pages":TARGET,"remaining_queue":list(queue)}),encoding="utf-8")
-    print(json.dumps({"new_pages":new_count,"target_pages":TARGET,"target_met":new_count>=TARGET,
-        "unique_urls_seen":len(seen_urls),"unique_content_hashes":len(seen_hashes),"queue_remaining":len(queue)}))
-    if new_count<TARGET: print("Target not met: source availability, robots rules, pacing or runtime may constrain the cycle.",file=sys.stderr)
 
-if __name__=="__main__": main()
+            seen_urls.add(url)
+            last_crawled_at[url]=time.time()
+            fetched_count+=1
+            item=extract(url,body,final)
+            if not item or item["content_sha256"] in seen_hashes:
+                continue
+            seen_hashes.add(item["content_sha256"])
+            line=json.dumps(item,ensure_ascii=False)+"\n"
+            corpus.write(line); corpus.flush(); cycle.write(line); cycle.flush(); new_count+=1
+            if fetched_count%100==0:
+                print(f"Fetched {fetched_count}/{TARGET}; new={new_count}; queue={len(queue)}")
+
+    remaining=list(queue)
+    summary={
+        "fetched_pages":fetched_count,
+        "new_pages":new_count,
+        "target_pages":TARGET,
+        "target_met":fetched_count>=TARGET,
+        "unique_urls_seen":len(seen_urls),
+        "unique_content_hashes":len(seen_hashes),
+        "queue_remaining":len(remaining),
+        "total_bytes":TOTAL_BYTES,
+        "hosts_touched":len(REQUESTED_HOSTS),
+        "budget_exhausted":BUDGET_EXHAUSTED,
+    }
+    STATE.write_text(json.dumps({
+        "seen_urls":sorted(seen_urls),
+        "seen_hashes":sorted(seen_hashes),
+        "last_crawled_at":last_crawled_at,
+        "last_run":time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime()),
+        "fetched_pages":fetched_count,
+        "new_pages":new_count,
+        "target_pages":TARGET,
+        "target_met":fetched_count>=TARGET,
+        "remaining_queue":remaining,
+        "total_bytes":TOTAL_BYTES,
+        "hosts_touched":sorted(REQUESTED_HOSTS),
+        "budget_exhausted":BUDGET_EXHAUSTED,
+    }),encoding="utf-8")
+    print(json.dumps(summary,sort_keys=True))
+    if fetched_count<TARGET:
+        print("Fetch target not met: source availability, robots rules, queue depth or an aggregate budget may constrain this cycle.",file=sys.stderr)
+
+
+if __name__=="__main__":
+    main()
