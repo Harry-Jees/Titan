@@ -15,6 +15,8 @@ class CrawlerPolicyTests(unittest.TestCase):
 
     def test_accepts_public_literal_and_public_dns(self):
         self.assertTrue(resolve_public_url("https://1.1.1.1/").allowed)
+        self.assertTrue(resolve_public_url("https://[2001:4860:4860::8888]/").allowed)
+        self.assertFalse(resolve_public_url("https://[::ffff:127.0.0.1]/").allowed)
         decision = resolve_public_url("https://docs.example.org/path",
                                       resolver=self.resolver("93.184.216.34"))
         self.assertTrue(decision.allowed)
