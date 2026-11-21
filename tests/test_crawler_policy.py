@@ -58,9 +58,9 @@ class CrawlerPolicyTests(unittest.TestCase):
         self.assertFalse(resolve_public_url("https://example.org:bad/").allowed)
         for candidate in (
             "https://example.org/a b",
-            "https://example.org/a\\\\b",
-            "https://example.org/a\\tb",
-            "https://example.org/a\\x7fb",
+            "https://example.org/a\\b",
+            "https://example.org/a\tb",
+            "https://example.org/a\x7fb",
         ):
             with self.subTest(candidate=candidate):
                 self.assertEqual(resolve_public_url(candidate).reason, "malformed_url")
