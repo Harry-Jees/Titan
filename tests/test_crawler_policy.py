@@ -56,6 +56,14 @@ class CrawlerPolicyTests(unittest.TestCase):
         self.assertEqual(resolve_public_url("https://a.example/" + "x" * 2100).reason,
                          "invalid_or_oversized_url")
         self.assertFalse(resolve_public_url("https://example.org:bad/").allowed)
+        for candidate in (
+            "https://example.org/a b",
+            "https://example.org/a\\\\b",
+            "https://example.org/a\\tb",
+            "https://example.org/a\\x7fb",
+        ):
+            with self.subTest(candidate=candidate):
+                self.assertEqual(resolve_public_url(candidate).reason, "malformed_url")
 
     def test_relative_redirect_is_resolved_and_revalidated(self):
         decision = validate_redirect("https://docs.example.org/a", "/b",
@@ -120,6 +128,14 @@ class CrawlerPolicyTests(unittest.TestCase):
             {"TITAN_MAX_QUEUE_SIZE": "99"},
             {"TITAN_ALLOWED_DOMAINS": "https://example.org/path"},
             {"TITAN_ALLOWED_DOMAINS": "*.example.org"},
+            {"TITAN_MAX_TOTAL_BYTES": "1000000001"},
+            {"TITAN_MAX_RUN_SECONDS": "3301"},
+            {"TITAN_MAX_HOSTS_PER_RUN": "501"},
+            {"TITAN_RECRAWL_INTERVAL_SECONDS": "2592001"},
+            {"TITAN_MAX_QUEUE_SIZE": "50001"},
+            {"TITAN_MAX_PAGE_BYTES": "4000001"},
+            {"TITAN_PER_HOST_DELAY": "60.1"},
+            {"TITAN_FETCH_TIMEOUT": "31"},
         ):
             with self.subTest(values=values):
                 with self.assertRaises(ValueError):
