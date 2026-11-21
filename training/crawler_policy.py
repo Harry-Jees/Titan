@@ -112,7 +112,7 @@ def resolve_public_url(value: str, resolver=socket.getaddrinfo) -> URLDecision:
     """Validate a public HTTP(S) URL and reject any non-global DNS answer."""
     if not isinstance(value, str) or not value or len(value) > 2048:
         return URLDecision(False, "invalid_or_oversized_url")
-    if any(ch.isspace() or ch == "\\\\" or ord(ch) < 0x20 or ord(ch) == 0x7f for ch in value):
+    if any(ch.isspace() or ch == "\\" or ord(ch) < 0x20 or ord(ch) == 0x7f for ch in value):
         return URLDecision(False, "malformed_url")
     try:
         parsed = urlsplit(value)
